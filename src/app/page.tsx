@@ -29,7 +29,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row flex-1 min-h-0 relative">
+    <div className="flex flex-col md:flex-row flex-1 min-h-0 h-full relative">
       {/* Desktop: Map on left (flex-1), Mobile: Map on top (40vh) */}
       <div className="h-[40vh] md:flex-1 md:min-h-0 relative">
         <MapView shops={shops} />
