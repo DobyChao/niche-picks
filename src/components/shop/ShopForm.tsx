@@ -6,6 +6,7 @@ import type { LocalShop } from '@/lib/types';
 
 interface ShopFormProps {
   shop?: LocalShop;
+  pickedCoords?: { lng: number; lat: number } | null;
   onSubmit?: () => void;
   onCancel?: () => void;
 }
@@ -17,7 +18,7 @@ interface FormErrors {
   general?: string;
 }
 
-export default function ShopForm({ shop, onSubmit, onCancel }: ShopFormProps) {
+export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: ShopFormProps) {
   const isEditing = !!shop;
 
   // Form state
@@ -46,6 +47,14 @@ export default function ShopForm({ shop, onSubmit, onCancel }: ShopFormProps) {
       setLat(shop.lat?.toString() ?? '');
     }
   }, [shop]);
+
+  // Update coordinates when map pick happens
+  useEffect(() => {
+    if (pickedCoords) {
+      setLng(pickedCoords.lng.toFixed(6));
+      setLat(pickedCoords.lat.toFixed(6));
+    }
+  }, [pickedCoords]);
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};

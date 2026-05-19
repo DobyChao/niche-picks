@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useLiveQuery } from '@/lib/db';
-import { getActiveShops } from '@/lib/db';
+import { useLiveQuery, getActiveShops } from '@/lib/db';
 import ShopCard from './ShopCard';
 import type { LocalShop } from '@/lib/types';
 
-export default function ShopList() {
+interface ShopListProps {
+  onShopClick?: (shop: LocalShop) => void;
+}
+
+export default function ShopList({ onShopClick }: ShopListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const shops = useLiveQuery(() => getActiveShops());
 
@@ -63,15 +66,13 @@ export default function ShopList() {
       </div>
 
       {/* Shop List */}
-      <div className="flex-1 overflow-y-auto py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto py-3 px-4 space-y-3">
         {shops === undefined ? (
-          // Loading state
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
             <span className="ml-3 text-gray-500 text-sm">加载中...</span>
           </div>
         ) : filteredShops.length === 0 ? (
-          // Empty state
           <div className="flex flex-col items-center justify-center py-12 text-gray-400">
             <svg
               className="w-16 h-16 mb-3 text-gray-300"
@@ -96,16 +97,19 @@ export default function ShopList() {
             </p>
           </div>
         ) : (
-          // Shop cards
           filteredShops.map((shop: LocalShop) => (
-            <ShopCard key={shop.id} shop={shop} />
+            <ShopCard
+              key={shop.id}
+              shop={shop}
+              onClick={onShopClick ? () => onShopClick(shop) : undefined}
+            />
           ))
         )}
       </div>
 
       {/* Footer count */}
       {shops && shops.length > 0 && (
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-1 py-2 text-center">
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-4 py-2 text-center">
           <span className="text-xs text-gray-400">
             共 {filteredShops.length} 家店铺
             {searchQuery && shops.length !== filteredShops.length && (

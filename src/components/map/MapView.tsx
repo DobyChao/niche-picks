@@ -5,23 +5,24 @@ import type { LocalShop } from '@/lib/types';
 
 interface MapViewProps {
   shops: LocalShop[];
+  onMapClick?: (lng: number, lat: number) => void;
+  pickMode?: boolean;
 }
 
-export default function MapView({ shops }: MapViewProps) {
+export default function MapView({ shops, onMapClick, pickMode }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const pickMarkerRef = useRef<any>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
 
   useEffect(() => {
-    // Check if AMap is already loaded
     if ((window as any).AMap) {
       initMap();
       return;
     }
 
-    // Try to load AMap script
     const existingScript = document.querySelector('script[src*="webapi.amap.com"]');
     if (existingScript) {
       existingScript.addEventListener('load', initMap);
@@ -34,7 +35,6 @@ export default function MapView({ shops }: MapViewProps) {
       return;
     }
 
-    // Fetch security code from server-side API, then load AMap script
     fetch('/api/amap/config')
       .then((res) => res.json())
       .then(({ securityJsCode }) => {
@@ -44,17 +44,15 @@ export default function MapView({ shops }: MapViewProps) {
           };
         }
       })
-      .catch(() => {
-        // Security code fetch failed; continue without it
-      })
+      .catch(() => {})
       .finally(() => {
         loadScript(amapKey);
       });
 
     return () => {
-      // Cleanup markers
       markersRef.current.forEach((marker) => marker?.setMap?.(null));
       markersRef.current = [];
+      pickMarkerRef.current?.setMap?.(null);
     };
   }, []);
 
@@ -81,14 +79,45 @@ export default function MapView({ shops }: MapViewProps) {
       const AMap = (window as any).AMap;
       mapInstanceRef.current = new AMap.Map(containerRef.current, {
         zoom: 13,
-        center: [116.397428, 39.90923], // Default to Beijing
+        center: [116.397428, 39.90923],
         viewMode: '2D',
       });
+
+      // Click to pick coordinates
+      mapInstanceRef.current.on('click', (e: any) => {
+        if (onMapClick && pickMode) {
+          const { lng, lat } = e.lnglat;
+          onMapClick(lng, lat);
+
+          // Show/update a pick marker
+          const AMap2 = (window as any).AMap;
+          if (pickMarkerRef.current) {
+            pickMarkerRef.current.setPosition([lng, lat]);
+          } else {
+            pickMarkerRef.current = new AMap2.Marker({
+              position: [lng, lat],
+              label: {
+                content: '选取位置',
+                direction: 'top',
+              },
+            });
+            pickMarkerRef.current.setMap(mapInstanceRef.current);
+          }
+        }
+      });
+
       setMapLoaded(true);
     } catch {
       setMapError(true);
     }
   }
+
+  // Update cursor style based on pickMode
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.style.cursor = pickMode ? 'crosshair' : '';
+    }
+  }, [pickMode]);
 
   // Update markers when shops change and map is loaded
   useEffect(() => {
@@ -97,11 +126,9 @@ export default function MapView({ shops }: MapViewProps) {
     const AMap = (window as any).AMap;
     if (!AMap) return;
 
-    // Clear existing markers
     markersRef.current.forEach((marker) => marker?.setMap?.(null));
     markersRef.current = [];
 
-    // Add new markers
     const validShops = shops.filter(
       (shop) => typeof shop.lng === 'number' && typeof shop.lat === 'number'
     );
@@ -123,7 +150,6 @@ export default function MapView({ shops }: MapViewProps) {
       }
     });
 
-    // Fit map to markers if there are any
     if (validShops.length > 0) {
       try {
         mapInstanceRef.current.setFitView(markersRef.current);
@@ -136,6 +162,11 @@ export default function MapView({ shops }: MapViewProps) {
   return (
     <div className="w-full h-full rounded-lg overflow-hidden relative" style={{ minHeight: '300px' }}>
       <div ref={containerRef} className="w-full h-full" />
+      {pickMode && mapLoaded && (
+        <div className="absolute top-3 left-3 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full shadow-md z-10">
+          点击地图选取坐标
+        </div>
+      )}
       {mapError && (
         <div className="absolute inset-0 bg-gray-200 flex items-center justify-center rounded-lg">
           <div className="text-center text-gray-500">

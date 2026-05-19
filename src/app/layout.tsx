@@ -62,7 +62,7 @@ export default function RootLayout({
     >
       <body className="h-full flex flex-col bg-gray-50">
         <NavHeader />
-        <main className="flex-1 flex flex-col min-h-0">{children}</main>
+        <main className="flex-1 flex flex-col min-h-0 overflow-hidden">{children}</main>
       </body>
     </html>
   );
