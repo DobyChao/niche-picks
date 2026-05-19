@@ -1,0 +1,321 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { addShop, updateShop } from '@/lib/db';
+import type { LocalShop } from '@/lib/types';
+
+interface ShopFormProps {
+  shop?: LocalShop;
+  onSubmit?: () => void;
+  onCancel?: () => void;
+}
+
+interface FormErrors {
+  name?: string;
+  lng?: string;
+  lat?: string;
+  general?: string;
+}
+
+export default function ShopForm({ shop, onSubmit, onCancel }: ShopFormProps) {
+  const isEditing = !!shop;
+
+  // Form state
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [category, setCategory] = useState('');
+  const [phone, setPhone] = useState('');
+  const [businessHours, setBusinessHours] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [lng, setLng] = useState('');
+  const [lat, setLat] = useState('');
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Populate form when editing
+  useEffect(() => {
+    if (shop) {
+      setName(shop.name ?? '');
+      setAddress(shop.address ?? '');
+      setCategory(shop.category ?? '');
+      setPhone(shop.phone ?? '');
+      setBusinessHours(shop.businessHours ?? '');
+      setTagsInput(shop.tags?.join(', ') ?? '');
+      setLng(shop.lng?.toString() ?? '');
+      setLat(shop.lat?.toString() ?? '');
+    }
+  }, [shop]);
+
+  function validate(): FormErrors {
+    const newErrors: FormErrors = {};
+
+    if (!name.trim()) {
+      newErrors.name = '店铺名称不能为空';
+    }
+
+    if (lng && isNaN(Number(lng))) {
+      newErrors.lng = '经度必须是有效数字';
+    }
+
+    if (lat && isNaN(Number(lat))) {
+      newErrors.lat = '纬度必须是有效数字';
+    }
+
+    return newErrors;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErrors({});
+    setSuccessMessage('');
+
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const tags = tagsInput
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      const shopData: Partial<LocalShop> = {
+        name: name.trim(),
+        address: address.trim() || undefined,
+        category: category.trim() || undefined,
+        phone: phone.trim() || undefined,
+        businessHours: businessHours.trim() || undefined,
+        tags: tags.length > 0 ? tags : undefined,
+        lng: lng ? Number(lng) : undefined,
+        lat: lat ? Number(lat) : undefined,
+        _syncStatus: 'local_modified',
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (isEditing && shop) {
+        await updateShop(shop.id, shopData);
+        setSuccessMessage('店铺信息已更新');
+      } else {
+        await addShop({
+          ...shopData,
+          createdAt: new Date().toISOString(),
+        } as Omit<LocalShop, 'id'>);
+        setSuccessMessage('店铺已创建');
+      }
+
+      onSubmit?.();
+    } catch (err) {
+      setErrors({
+        general: `保存失败: ${err instanceof Error ? err.message : '未知错误'}`,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+          ✓ {successMessage}
+        </div>
+      )}
+
+      {/* General Error */}
+      {errors.general && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          ✕ {errors.general}
+        </div>
+      )}
+
+      {/* Shop Name (Required) */}
+      <div>
+        <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700 mb-1">
+          店铺名称 <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="shop-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="输入店铺名称"
+          className={`w-full px-3 py-2 border rounded-lg text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     placeholder-gray-400
+                     ${errors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+        />
+        {errors.name && (
+          <p className="mt-1 text-xs text-red-600">{errors.name}</p>
+        )}
+      </div>
+
+      {/* Address */}
+      <div>
+        <label htmlFor="shop-address" className="block text-sm font-medium text-gray-700 mb-1">
+          地址
+        </label>
+        <input
+          id="shop-address"
+          type="text"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="输入店铺地址"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     placeholder-gray-400"
+        />
+      </div>
+
+      {/* Category */}
+      <div>
+        <label htmlFor="shop-category" className="block text-sm font-medium text-gray-700 mb-1">
+          分类
+        </label>
+        <input
+          id="shop-category"
+          type="text"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="如：餐厅、咖啡厅、书店"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     placeholder-gray-400"
+        />
+      </div>
+
+      {/* Phone */}
+      <div>
+        <label htmlFor="shop-phone" className="block text-sm font-medium text-gray-700 mb-1">
+          电话
+        </label>
+        <input
+          id="shop-phone"
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="联系电话"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     placeholder-gray-400"
+        />
+      </div>
+
+      {/* Business Hours */}
+      <div>
+        <label htmlFor="shop-hours" className="block text-sm font-medium text-gray-700 mb-1">
+          营业时间
+        </label>
+        <input
+          id="shop-hours"
+          type="text"
+          value={businessHours}
+          onChange={(e) => setBusinessHours(e.target.value)}
+          placeholder="如：09:00-22:00"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     placeholder-gray-400"
+        />
+      </div>
+
+      {/* Tags */}
+      <div>
+        <label htmlFor="shop-tags" className="block text-sm font-medium text-gray-700 mb-1">
+          标签
+        </label>
+        <input
+          id="shop-tags"
+          type="text"
+          value={tagsInput}
+          onChange={(e) => setTagsInput(e.target.value)}
+          placeholder="用逗号分隔，如：安静, 适合工作, WiFi"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                     placeholder-gray-400"
+        />
+        <p className="mt-1 text-xs text-gray-400">多个标签用逗号分隔</p>
+      </div>
+
+      {/* Coordinates */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor="shop-lng" className="block text-sm font-medium text-gray-700 mb-1">
+            经度 (lng)
+          </label>
+          <input
+            id="shop-lng"
+            type="number"
+            step="any"
+            value={lng}
+            onChange={(e) => setLng(e.target.value)}
+            placeholder="116.397"
+            className={`w-full px-3 py-2 border rounded-lg text-sm
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                       placeholder-gray-400
+                       ${errors.lng ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+          />
+          {errors.lng && (
+            <p className="mt-1 text-xs text-red-600">{errors.lng}</p>
+          )}
+        </div>
+        <div>
+          <label htmlFor="shop-lat" className="block text-sm font-medium text-gray-700 mb-1">
+            纬度 (lat)
+          </label>
+          <input
+            id="shop-lat"
+            type="number"
+            step="any"
+            value={lat}
+            onChange={(e) => setLat(e.target.value)}
+            placeholder="39.909"
+            className={`w-full px-3 py-2 border rounded-lg text-sm
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                       placeholder-gray-400
+                       ${errors.lat ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+          />
+          {errors.lat && (
+            <p className="mt-1 text-xs text-red-600">{errors.lat}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Submit & Cancel Buttons */}
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="flex-1 py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg
+                     hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     transition-colors duration-200 text-sm"
+        >
+          {isSubmitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+              保存中...
+            </span>
+          ) : isEditing ? (
+            '更新店铺'
+          ) : (
+            '添加店铺'
+          )}
+        </button>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            取消
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
