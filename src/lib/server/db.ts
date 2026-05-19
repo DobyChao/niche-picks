@@ -61,6 +61,11 @@ db.exec(`
     nickname TEXT NOT NULL,
     createdAt TEXT NOT NULL
   );
+
+  CREATE INDEX IF NOT EXISTS idx_shops_category ON shops(category);
+  CREATE INDEX IF NOT EXISTS idx_reviews_shopId ON reviews(shopId);
+  CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_syncs(status);
+  CREATE INDEX IF NOT EXISTS idx_pending_token ON pending_syncs(userToken);
 `);
 
 // Type reference for the database instance

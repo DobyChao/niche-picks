@@ -30,11 +30,21 @@ export async function pullRemoteData(userToken: string) {
       });
     }
 
-    // 2. Handle rejected batches — reset status to 'synced'
-    for (const status of syncStatuses || []) {
-      if (status.status === 'rejected') {
-        // For rejected changes, just reset sync status so user can see the cloud version
-        // The server data was already applied above, which overwrites local changes
+    // 2. Handle rejected batches — reset affected entities to local_modified
+    for (const batch of syncStatuses || []) {
+      if (batch.status === 'rejected') {
+        let changes: Array<{ entity: string; entityId: string }> = [];
+        try {
+          changes = batch.changesPayload ? JSON.parse(batch.changesPayload) : [];
+        } catch { /* ignore malformed payload */ }
+
+        for (const change of changes) {
+          const table = change.entity === 'shop' ? db.shops : db.reviews;
+          const existing = await table.get(change.entityId);
+          if (existing) {
+            await table.update(change.entityId, { _syncStatus: 'local_modified' as const });
+          }
+        }
       }
     }
   });

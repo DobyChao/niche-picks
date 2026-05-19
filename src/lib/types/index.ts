@@ -31,8 +31,7 @@ export interface LocalReview {
   _syncStatus: SyncStatus;
 }
 
-export interface LocalChangeLog {
-  id?: number;
+export interface ChangeLogItem {
   entity: 'shop' | 'review';
   entityId: string;
   action: 'create' | 'update' | 'delete';
@@ -40,12 +39,8 @@ export interface LocalChangeLog {
   timestamp: string;
 }
 
-export interface ChangeLogItem {
-  entity: 'shop' | 'review';
-  entityId: string;
-  action: 'create' | 'update' | 'delete';
-  snapshot: any;
-  timestamp: string;
+export interface LocalChangeLog extends ChangeLogItem {
+  id?: number;
 }
 
 export interface PendingSync {

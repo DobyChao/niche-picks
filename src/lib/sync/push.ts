@@ -1,9 +1,11 @@
 import { db } from '@/lib/db';
 
 export async function pushLocalChanges(userToken: string, authorName: string) {
-  // 1. Get all unsynced changelog entries
+  // 1. Get all unsynced changelog entries and snapshot their IDs
   const logs = await db.changelog.toArray();
   if (logs.length === 0) return { success: true, message: '没有需要同步的变更' };
+
+  const logIds = logs.map((l) => l.id).filter((id): id is number => id !== undefined);
 
   // 2. POST to /api/sync/push
   const res = await fetch('/api/sync/push', {
@@ -28,8 +30,8 @@ export async function pushLocalChanges(userToken: string, authorName: string) {
         await db.reviews.update(log.entityId, { _syncStatus: 'pending' as const });
       }
     }
-    // 4. Clear changelog after successful push
-    await db.changelog.clear();
+    // 4. Delete only the pushed changelog entries
+    await db.changelog.bulkDelete(logIds);
   });
 
   return { success: true, syncId, count: logs.length };

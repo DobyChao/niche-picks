@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const shops = db.prepare('SELECT * FROM shops WHERE updatedAt > ?').all(since);
     const reviews = db.prepare('SELECT * FROM reviews WHERE updatedAt > ?').all(since);
-    const pendingBatches = db.prepare('SELECT syncId, status FROM pending_syncs WHERE userToken = ?').all(token);
+    const pendingBatches = db.prepare('SELECT syncId, status, changesPayload FROM pending_syncs WHERE userToken = ?').all(token);
 
     return NextResponse.json({
       ok: true,

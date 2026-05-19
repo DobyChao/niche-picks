@@ -45,7 +45,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: '认证失败' }, { status: 401 });
     }
 
-    const rows = db.prepare('SELECT * FROM pending_syncs WHERE status = ?').all('pending') as PendingSync[];
+    const statusFilter = searchParams.get('status') || 'pending';
+
+    if (!['pending', 'approved', 'rejected'].includes(statusFilter)) {
+      return NextResponse.json({ ok: false, error: 'status 参数无效，可选: pending, approved, rejected' }, { status: 400 });
+    }
+
+    const rows = db.prepare('SELECT * FROM pending_syncs WHERE status = ?').all(statusFilter) as PendingSync[];
 
     const pending = rows.map((row) => {
       let changes: ChangeLogItem[] = [];

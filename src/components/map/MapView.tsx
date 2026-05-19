@@ -29,19 +29,36 @@ export default function MapView({ shops }: MapViewProps) {
     }
 
     const amapKey = process.env.NEXT_PUBLIC_AMAP_KEY || '';
-    const amapSecurityCode = process.env.NEXT_PUBLIC_AMAP_SECURITY_CODE || '';
     if (!amapKey) {
       setMapError(true);
       return;
     }
 
-    // 设置安全密钥（必须在加载地图脚本之前）
-    if (amapSecurityCode) {
-      (window as any)._AMapSecurityConfig = {
-        securityJsCode: amapSecurityCode,
-      };
-    }
+    // Fetch security code from server-side API, then load AMap script
+    fetch('/api/amap/config')
+      .then((res) => res.json())
+      .then(({ securityJsCode }) => {
+        if (securityJsCode) {
+          (window as any)._AMapSecurityConfig = {
+            securityJsCode,
+          };
+        }
+      })
+      .catch(() => {
+        // Security code fetch failed; continue without it
+      })
+      .finally(() => {
+        loadScript(amapKey);
+      });
 
+    return () => {
+      // Cleanup markers
+      markersRef.current.forEach((marker) => marker?.setMap?.(null));
+      markersRef.current = [];
+    };
+  }, []);
+
+  function loadScript(amapKey: string) {
     const script = document.createElement('script');
     script.src = `https://webapi.amap.com/maps?v=2.0&key=${amapKey}`;
     script.async = true;
@@ -52,13 +69,7 @@ export default function MapView({ shops }: MapViewProps) {
       setMapError(true);
     };
     document.head.appendChild(script);
-
-    return () => {
-      // Cleanup markers
-      markersRef.current.forEach((marker) => marker?.setMap?.(null));
-      markersRef.current = [];
-    };
-  }, []);
+  }
 
   function initMap() {
     if (!containerRef.current || !(window as any).AMap) {
