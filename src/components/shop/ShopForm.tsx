@@ -2,13 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { addShop, updateShop } from '@/lib/db';
-import type { LocalShop } from '@/lib/types';
+import type { MergedShop } from '@/lib/types';
+
+interface PrefilledData {
+  lng: number;
+  lat: number;
+  address: string;
+  name?: string;
+  category?: string;
+  phone?: string;
+  amapPoiId?: string;
+}
 
 interface ShopFormProps {
-  shop?: LocalShop;
-  pickedCoords?: { lng: number; lat: number } | null;
+  shop?: MergedShop;
+  prefilledData?: PrefilledData | null;
   onSubmit?: () => void;
   onCancel?: () => void;
+  onRepickLocation?: () => void;
 }
 
 interface FormErrors {
@@ -18,10 +29,9 @@ interface FormErrors {
   general?: string;
 }
 
-export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: ShopFormProps) {
+export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRepickLocation }: ShopFormProps) {
   const isEditing = !!shop;
 
-  // Form state
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [category, setCategory] = useState('');
@@ -30,11 +40,11 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
   const [tagsInput, setTagsInput] = useState('');
   const [lng, setLng] = useState('');
   const [lat, setLat] = useState('');
+  const [amapPoiId, setAmapPoiId] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Populate form when editing
   useEffect(() => {
     if (shop) {
       setName(shop.name ?? '');
@@ -45,32 +55,43 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
       setTagsInput(shop.tags?.join(', ') ?? '');
       setLng(shop.lng?.toString() ?? '');
       setLat(shop.lat?.toString() ?? '');
+      setAmapPoiId(shop.amapPoiId ?? '');
     }
   }, [shop]);
 
-  // Update coordinates when map pick happens
   useEffect(() => {
-    if (pickedCoords) {
-      setLng(pickedCoords.lng.toFixed(6));
-      setLat(pickedCoords.lat.toFixed(6));
+    if (prefilledData) {
+      setLng(prefilledData.lng.toFixed(6));
+      setLat(prefilledData.lat.toFixed(6));
+      if (prefilledData.address) {
+        setAddress(prefilledData.address);
+      }
+      if (!shop) {
+        if (prefilledData.name) {
+          setName(prefilledData.name);
+        }
+        if (prefilledData.category) {
+          setCategory(prefilledData.category);
+        }
+        if (prefilledData.phone) {
+          setPhone(prefilledData.phone);
+        }
+        if (prefilledData.amapPoiId) {
+          setAmapPoiId(prefilledData.amapPoiId);
+        }
+      } else {
+        if (prefilledData.amapPoiId) {
+          setAmapPoiId(prefilledData.amapPoiId);
+        }
+      }
     }
-  }, [pickedCoords]);
+  }, [prefilledData, shop]);
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};
-
-    if (!name.trim()) {
-      newErrors.name = '店铺名称不能为空';
-    }
-
-    if (lng && isNaN(Number(lng))) {
-      newErrors.lng = '经度必须是有效数字';
-    }
-
-    if (lat && isNaN(Number(lat))) {
-      newErrors.lat = '纬度必须是有效数字';
-    }
-
+    if (!name.trim()) newErrors.name = '店铺名称不能为空';
+    if (lng && isNaN(Number(lng))) newErrors.lng = '经度必须是有效数字';
+    if (lat && isNaN(Number(lat))) newErrors.lat = '纬度必须是有效数字';
     return newErrors;
   }
 
@@ -93,7 +114,7 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
 
-      const shopData: Partial<LocalShop> = {
+      const shopData = {
         name: name.trim(),
         address: address.trim() || undefined,
         category: category.trim() || undefined,
@@ -102,7 +123,8 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         tags: tags.length > 0 ? tags : undefined,
         lng: lng ? Number(lng) : undefined,
         lat: lat ? Number(lat) : undefined,
-        _syncStatus: 'local_modified',
+        amapPoiId: amapPoiId || undefined,
+        photos: [] as string[],
         updatedAt: new Date().toISOString(),
       };
 
@@ -113,7 +135,7 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         await addShop({
           ...shopData,
           createdAt: new Date().toISOString(),
-        } as Omit<LocalShop, 'id'>);
+        } as any);
         setSuccessMessage('店铺已创建');
       }
 
@@ -129,21 +151,18 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Success Message */}
       {successMessage && (
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
           ✓ {successMessage}
         </div>
       )}
 
-      {/* General Error */}
       {errors.general && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           ✕ {errors.general}
         </div>
       )}
 
-      {/* Shop Name (Required) */}
       <div>
         <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700 mb-1">
           店铺名称 <span className="text-red-500">*</span>
@@ -159,16 +178,11 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
                      placeholder-gray-400
                      ${errors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
         />
-        {errors.name && (
-          <p className="mt-1 text-xs text-red-600">{errors.name}</p>
-        )}
+        {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
       </div>
 
-      {/* Address */}
       <div>
-        <label htmlFor="shop-address" className="block text-sm font-medium text-gray-700 mb-1">
-          地址
-        </label>
+        <label htmlFor="shop-address" className="block text-sm font-medium text-gray-700 mb-1">地址</label>
         <input
           id="shop-address"
           type="text"
@@ -181,11 +195,8 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         />
       </div>
 
-      {/* Category */}
       <div>
-        <label htmlFor="shop-category" className="block text-sm font-medium text-gray-700 mb-1">
-          分类
-        </label>
+        <label htmlFor="shop-category" className="block text-sm font-medium text-gray-700 mb-1">分类</label>
         <input
           id="shop-category"
           type="text"
@@ -198,11 +209,8 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         />
       </div>
 
-      {/* Phone */}
       <div>
-        <label htmlFor="shop-phone" className="block text-sm font-medium text-gray-700 mb-1">
-          电话
-        </label>
+        <label htmlFor="shop-phone" className="block text-sm font-medium text-gray-700 mb-1">电话</label>
         <input
           id="shop-phone"
           type="tel"
@@ -215,11 +223,8 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         />
       </div>
 
-      {/* Business Hours */}
       <div>
-        <label htmlFor="shop-hours" className="block text-sm font-medium text-gray-700 mb-1">
-          营业时间
-        </label>
+        <label htmlFor="shop-hours" className="block text-sm font-medium text-gray-700 mb-1">营业时间</label>
         <input
           id="shop-hours"
           type="text"
@@ -232,11 +237,8 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         />
       </div>
 
-      {/* Tags */}
       <div>
-        <label htmlFor="shop-tags" className="block text-sm font-medium text-gray-700 mb-1">
-          标签
-        </label>
+        <label htmlFor="shop-tags" className="block text-sm font-medium text-gray-700 mb-1">标签</label>
         <input
           id="shop-tags"
           type="text"
@@ -250,12 +252,9 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
         <p className="mt-1 text-xs text-gray-400">多个标签用逗号分隔</p>
       </div>
 
-      {/* Coordinates */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="shop-lng" className="block text-sm font-medium text-gray-700 mb-1">
-            经度 (lng)
-          </label>
+          <label htmlFor="shop-lng" className="block text-sm font-medium text-gray-700 mb-1">经度 (lng)</label>
           <input
             id="shop-lng"
             type="number"
@@ -268,14 +267,10 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
                        placeholder-gray-400
                        ${errors.lng ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
           />
-          {errors.lng && (
-            <p className="mt-1 text-xs text-red-600">{errors.lng}</p>
-          )}
+          {errors.lng && <p className="mt-1 text-xs text-red-600">{errors.lng}</p>}
         </div>
         <div>
-          <label htmlFor="shop-lat" className="block text-sm font-medium text-gray-700 mb-1">
-            纬度 (lat)
-          </label>
+          <label htmlFor="shop-lat" className="block text-sm font-medium text-gray-700 mb-1">纬度 (lat)</label>
           <input
             id="shop-lat"
             type="number"
@@ -288,13 +283,24 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
                        placeholder-gray-400
                        ${errors.lat ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
           />
-          {errors.lat && (
-            <p className="mt-1 text-xs text-red-600">{errors.lat}</p>
-          )}
+          {errors.lat && <p className="mt-1 text-xs text-red-600">{errors.lat}</p>}
         </div>
       </div>
 
-      {/* Submit & Cancel Buttons */}
+      {isEditing && onRepickLocation && (
+        <button
+          type="button"
+          onClick={onRepickLocation}
+          className="col-span-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          从地图重新选取位置
+        </button>
+      )}
+
       <div className="flex gap-3">
         <button
           type="submit"
@@ -309,11 +315,7 @@ export default function ShopForm({ shop, pickedCoords, onSubmit, onCancel }: Sho
               <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
               保存中...
             </span>
-          ) : isEditing ? (
-            '更新店铺'
-          ) : (
-            '添加店铺'
-          )}
+          ) : isEditing ? '更新店铺' : '添加店铺'}
         </button>
         {onCancel && (
           <button

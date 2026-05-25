@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
 
     // Prepare upsert statements matching the actual DB schema
     const upsertShop = db.prepare(`
-      INSERT OR REPLACE INTO shops (id, name, address, category, phone, businessHours, lng, lat, tags, isDeleted, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO shops (id, name, address, category, phone, businessHours, lng, lat, tags, amapPoiId, photos, isDeleted, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const upsertReview = db.prepare(`
@@ -54,6 +54,8 @@ export async function POST(request: NextRequest) {
             s.lng ?? null,
             s.lat ?? null,
             JSON.stringify(s.tags || []),
+            s.amapPoiId || '',
+            JSON.stringify(s.photos || []),
             s.isDeleted ? 1 : 0,
             s.createdAt || new Date().toISOString(),
             s.updatedAt || new Date().toISOString()

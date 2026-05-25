@@ -1,38 +1,64 @@
 import { db } from '@/lib/db';
+import { validateSyncToken } from '@/lib/sync/auth';
+import type { ChangeLogItem } from '@/lib/types';
 
 export async function pushLocalChanges(userToken: string, authorName: string) {
-  // 1. Get all unsynced changelog entries and snapshot their IDs
-  const logs = await db.changelog.toArray();
-  if (logs.length === 0) return { success: true, message: '没有需要同步的变更' };
+  const draftShopChanges = await db.shopChanges.where('status').equals('draft').toArray();
+  const draftReviewChanges = await db.reviewChanges.where('status').equals('draft').toArray();
 
-  const logIds = logs.map((l) => l.id).filter((id): id is number => id !== undefined);
+  if (draftShopChanges.length === 0 && draftReviewChanges.length === 0) {
+    await validateSyncToken(userToken);
+    return { success: true, message: '没有需要同步的变更' };
+  }
 
-  // 2. POST to /api/sync/push
+  const changes: ChangeLogItem[] = [];
+  const now = new Date().toISOString();
+
+  for (const c of draftShopChanges) {
+    const { status: _s, syncId: _sid, ...snapshot } = c;
+    const existsInBase = await db.localShops.get(c.id);
+    changes.push({
+      entity: 'shop',
+      entityId: c.id,
+      action: c.isDeleted ? 'delete' : existsInBase ? 'update' : 'create',
+      snapshot,
+      timestamp: now,
+    });
+  }
+
+  for (const c of draftReviewChanges) {
+    const { status: _s, syncId: _sid, ...snapshot } = c;
+    const existsInBase = await db.localReviews.get(c.id);
+    changes.push({
+      entity: 'review',
+      entityId: c.id,
+      action: c.isDeleted ? 'delete' : existsInBase ? 'update' : 'create',
+      snapshot,
+      timestamp: now,
+    });
+  }
+
   const res = await fetch('/api/sync/push', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: userToken, authorName, changes: logs }),
+    body: JSON.stringify({ token: userToken, authorName, changes }),
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    return { success: false, message: err.error || '同步失败' };
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `同步失败 (HTTP ${res.status})`);
   }
 
   const { syncId } = await res.json();
 
-  // 3. Update local sync status to 'pending' for affected entities
-  await db.transaction('rw', [db.shops, db.reviews, db.changelog], async () => {
-    for (const log of logs) {
-      if (log.entity === 'shop') {
-        await db.shops.update(log.entityId, { _syncStatus: 'pending' as const });
-      } else {
-        await db.reviews.update(log.entityId, { _syncStatus: 'pending' as const });
-      }
+  await db.transaction('rw', [db.shopChanges, db.reviewChanges], async () => {
+    for (const c of draftShopChanges) {
+      await db.shopChanges.update(c.id, { status: 'pending', syncId });
     }
-    // 4. Delete only the pushed changelog entries
-    await db.changelog.bulkDelete(logIds);
+    for (const c of draftReviewChanges) {
+      await db.reviewChanges.update(c.id, { status: 'pending', syncId });
+    }
   });
 
-  return { success: true, syncId, count: logs.length };
+  return { success: true, syncId, count: changes.length };
 }

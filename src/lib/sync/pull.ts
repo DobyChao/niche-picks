@@ -1,57 +1,61 @@
 import { db } from '@/lib/db';
 
 export async function pullRemoteData(userToken: string) {
-  const lastSyncTime = typeof window !== 'undefined' 
-    ? localStorage.getItem('lastSyncTime') || '1970-01-01T00:00:00Z'
-    : '1970-01-01T00:00:00Z';
+  const res = await fetch(
+    `/api/sync/pull?token=${encodeURIComponent(userToken)}&since=1970-01-01T00:00:00Z`,
+  );
 
-  const res = await fetch(`/api/sync/pull?token=${encodeURIComponent(userToken)}&since=${encodeURIComponent(lastSyncTime)}`);
-  if (!res.ok) return { success: false };
+  const data = await res.json().catch(() => ({}));
 
-  const { shops, reviews, syncStatuses, serverTime } = await res.json();
+  if (!res.ok || data?.ok === false) {
+    throw new Error(data?.error || `拉取失败 (HTTP ${res.status})`);
+  }
 
-  await db.transaction('rw', [db.shops, db.reviews], async () => {
-    // 1. Apply server data (including tombstones)
+  const { shops = [], reviews = [], syncStatuses = [] } = data;
+
+  // 1. 全量覆盖桶 A
+  await db.transaction('rw', [db.localShops, db.localReviews], async () => {
+    await db.localShops.clear();
     for (const shop of shops) {
-      await db.shops.put({
+      await db.localShops.put({
         ...shop,
         tags: typeof shop.tags === 'string' ? JSON.parse(shop.tags) : shop.tags,
+        photos: typeof shop.photos === 'string' ? JSON.parse(shop.photos) : (shop.photos || []),
         isDeleted: !!shop.isDeleted,
-        _syncStatus: 'synced' as const,
       });
     }
 
+    await db.localReviews.clear();
     for (const review of reviews) {
-      await db.reviews.put({
+      await db.localReviews.put({
         ...review,
         tags: typeof review.tags === 'string' ? JSON.parse(review.tags) : review.tags,
         isDeleted: !!review.isDeleted,
-        _syncStatus: 'synced' as const,
       });
-    }
-
-    // 2. Handle rejected batches — reset affected entities to local_modified
-    for (const batch of syncStatuses || []) {
-      if (batch.status === 'rejected') {
-        let changes: Array<{ entity: string; entityId: string }> = [];
-        try {
-          changes = batch.changesPayload ? JSON.parse(batch.changesPayload) : [];
-        } catch { /* ignore malformed payload */ }
-
-        for (const change of changes) {
-          const table = change.entity === 'shop' ? db.shops : db.reviews;
-          const existing = await table.get(change.entityId);
-          if (existing) {
-            await table.update(change.entityId, { _syncStatus: 'local_modified' as const });
-          }
-        }
-      }
     }
   });
 
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('lastSyncTime', serverTime);
+  // 2. GC 桶 B：删除已 approved/rejected 批次的记录
+  const batchStatusMap = new Map<string, string>();
+  for (const batch of syncStatuses || []) {
+    batchStatusMap.set(batch.syncId, batch.status);
   }
+
+  await db.transaction('rw', [db.shopChanges, db.reviewChanges], async () => {
+    const allShopChanges = await db.shopChanges.toArray();
+    const allReviewChanges = await db.reviewChanges.toArray();
+
+    for (const c of allShopChanges) {
+      if (c.syncId && batchStatusMap.get(c.syncId) !== 'pending') {
+        await db.shopChanges.delete(c.id);
+      }
+    }
+    for (const c of allReviewChanges) {
+      if (c.syncId && batchStatusMap.get(c.syncId) !== 'pending') {
+        await db.reviewChanges.delete(c.id);
+      }
+    }
+  });
 
   return { success: true, shopCount: shops.length, reviewCount: reviews.length };
 }

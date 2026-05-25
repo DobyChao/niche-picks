@@ -27,6 +27,8 @@ db.exec(`
     lng REAL,
     lat REAL,
     tags TEXT DEFAULT '[]',
+    amapPoiId TEXT DEFAULT '',
+    photos TEXT DEFAULT '[]',
     isDeleted INTEGER DEFAULT 0,
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
@@ -67,6 +69,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_syncs(status);
   CREATE INDEX IF NOT EXISTS idx_pending_token ON pending_syncs(userToken);
 `);
+
+// Migration: add remark column to user_tokens
+try {
+  db.exec('ALTER TABLE user_tokens ADD COLUMN remark TEXT DEFAULT ""');
+} catch {
+  // Column already exists
+}
+
+// Migration: add amapPoiId and photos columns to shops
+try {
+  db.exec('ALTER TABLE shops ADD COLUMN amapPoiId TEXT DEFAULT ""');
+} catch {}
+try {
+  db.exec('ALTER TABLE shops ADD COLUMN photos TEXT DEFAULT "[]"');
+} catch {}
 
 // Type reference for the database instance
 export type ServerDB = typeof db;

@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { addReview, updateReview } from '@/lib/db';
-import type { LocalReview } from '@/lib/types';
+import type { MergedReview } from '@/lib/types';
 
 interface ReviewFormProps {
   shopId: string;
-  review?: LocalReview;
+  review?: MergedReview;
   onSubmit?: () => void;
   onCancel?: () => void;
 }
@@ -42,12 +42,8 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};
-    if (rating < 1 || rating > 5) {
-      newErrors.rating = '评分必须在 1-5 之间';
-    }
-    if (!content.trim()) {
-      newErrors.content = '点评内容不能为空';
-    }
+    if (rating < 1 || rating > 5) newErrors.rating = '评分必须在 1-5 之间';
+    if (!content.trim()) newErrors.content = '点评内容不能为空';
     return newErrors;
   }
 
@@ -69,7 +65,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
 
-      const reviewData: Partial<LocalReview> = {
+      const reviewData = {
         shopId,
         rating,
         content: content.trim(),
@@ -77,7 +73,6 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         avgPrice: avgPrice ? Number(avgPrice) : null,
         visitDate: visitDate || null,
         tags: tags.length > 0 ? tags : [],
-        _syncStatus: 'local_modified',
         updatedAt: new Date().toISOString(),
       };
 
@@ -87,7 +82,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         await addReview({
           ...reviewData,
           createdAt: new Date().toISOString(),
-        } as Omit<LocalReview, 'id' | 'isDeleted' | 'createdAt' | 'updatedAt' | '_syncStatus'>);
+        } as any);
       }
 
       onSubmit?.();
@@ -108,7 +103,6 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         </div>
       )}
 
-      {/* Rating */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           评分 <span className="text-red-500">*</span>
@@ -125,12 +119,9 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
             </button>
           ))}
         </div>
-        {errors.rating && (
-          <p className="mt-1 text-xs text-red-600">{errors.rating}</p>
-        )}
+        {errors.rating && <p className="mt-1 text-xs text-red-600">{errors.rating}</p>}
       </div>
 
-      {/* Content */}
       <div>
         <label htmlFor="review-content" className="block text-sm font-medium text-gray-700 mb-1">
           点评内容 <span className="text-red-500">*</span>
@@ -146,16 +137,11 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
                      placeholder-gray-400 resize-none
                      ${errors.content ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
         />
-        {errors.content && (
-          <p className="mt-1 text-xs text-red-600">{errors.content}</p>
-        )}
+        {errors.content && <p className="mt-1 text-xs text-red-600">{errors.content}</p>}
       </div>
 
-      {/* Author */}
       <div>
-        <label htmlFor="review-author" className="block text-sm font-medium text-gray-700 mb-1">
-          作者
-        </label>
+        <label htmlFor="review-author" className="block text-sm font-medium text-gray-700 mb-1">作者</label>
         <input
           id="review-author"
           type="text"
@@ -168,12 +154,9 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         />
       </div>
 
-      {/* Avg Price & Visit Date */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor="review-price" className="block text-sm font-medium text-gray-700 mb-1">
-            人均消费 (¥)
-          </label>
+          <label htmlFor="review-price" className="block text-sm font-medium text-gray-700 mb-1">人均消费 (¥)</label>
           <input
             id="review-price"
             type="number"
@@ -187,9 +170,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
           />
         </div>
         <div>
-          <label htmlFor="review-date" className="block text-sm font-medium text-gray-700 mb-1">
-            到访日期
-          </label>
+          <label htmlFor="review-date" className="block text-sm font-medium text-gray-700 mb-1">到访日期</label>
           <input
             id="review-date"
             type="date"
@@ -202,11 +183,8 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         </div>
       </div>
 
-      {/* Tags */}
       <div>
-        <label htmlFor="review-tags" className="block text-sm font-medium text-gray-700 mb-1">
-          标签
-        </label>
+        <label htmlFor="review-tags" className="block text-sm font-medium text-gray-700 mb-1">标签</label>
         <input
           id="review-tags"
           type="text"
@@ -219,7 +197,6 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         />
       </div>
 
-      {/* Buttons */}
       <div className="flex gap-3 pt-1">
         <button
           type="submit"

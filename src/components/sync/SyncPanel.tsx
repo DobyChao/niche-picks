@@ -1,50 +1,43 @@
 'use client';
 
-import { useState } from 'react';
-import { useLiveQuery } from '@/lib/db';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { pushLocalChanges } from '@/lib/sync/push';
 import { pullRemoteData } from '@/lib/sync/pull';
+import { getSavedSyncIdentity, type SyncIdentity } from '@/lib/sync/auth';
+import { useAllChanges } from '@/lib/db';
 
 export default function SyncPanel() {
-  const [userToken, setUserToken] = useState('');
-  const [authorName, setAuthorName] = useState('');
+  const [identity, setIdentity] = useState<SyncIdentity>({ token: '', authorName: '' });
+  const [loaded, setLoaded] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const changes = useAllChanges();
+  const draftCount = changes?.filter((change) => change.status === 'draft').length ?? 0;
+  const pendingCount = changes?.filter((change) => change.status === 'pending').length ?? 0;
+  const hasIdentity = Boolean(identity.token);
 
-  // Get changelog count reactively
-  const changelogEntries = useLiveQuery(
-    async () => {
-      // Try to query the changelog table if it exists
-      try {
-        const { db } = await import('@/lib/db');
-        return await db.table('changelog').toArray();
-      } catch {
-        return [];
-      }
-    },
-    [],
-    []
-  );
-
-  const changelogCount = changelogEntries?.length ?? 0;
+  useEffect(() => {
+    setIdentity(getSavedSyncIdentity());
+    setLoaded(true);
+  }, []);
 
   function showMessage(type: 'success' | 'error', text: string) {
     setMessage({ type, text });
-    // Auto-clear after 5 seconds
     setTimeout(() => setMessage(null), 5000);
   }
 
   async function handlePush() {
-    if (!userToken.trim()) {
-      showMessage('error', '请输入 User Token');
+    if (!identity.token) {
+      showMessage('error', '请先配置同步身份');
       return;
     }
-    if (!authorName.trim()) {
-      showMessage('error', '请输入昵称');
+    if (!identity.authorName) {
+      showMessage('error', '请先在身份设置中填写昵称');
       return;
     }
 
@@ -52,7 +45,7 @@ export default function SyncPanel() {
     setMessage(null);
 
     try {
-      await pushLocalChanges(userToken.trim(), authorName.trim());
+      await pushLocalChanges(identity.token, identity.authorName);
       showMessage('success', '推送成功！本地变更已上传到服务器。');
     } catch (err) {
       showMessage(
@@ -65,8 +58,8 @@ export default function SyncPanel() {
   }
 
   async function handlePull() {
-    if (!userToken.trim()) {
-      showMessage('error', '请输入 User Token');
+    if (!identity.token) {
+      showMessage('error', '请先配置同步身份');
       return;
     }
 
@@ -74,8 +67,14 @@ export default function SyncPanel() {
     setMessage(null);
 
     try {
-      await pullRemoteData(userToken.trim());
-      showMessage('success', '拉取成功！远程数据已同步到本地。');
+      const result = await pullRemoteData(identity.token);
+      const total = result.shopCount + result.reviewCount;
+      showMessage(
+        'success',
+        total > 0
+          ? `拉取成功！已同步 ${result.shopCount} 家店铺、${result.reviewCount} 条点评。`
+          : '拉取成功！没有新的远程数据。'
+      );
     } catch (err) {
       showMessage(
         'error',
@@ -87,109 +86,122 @@ export default function SyncPanel() {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-5">
-      <h2 className="text-lg font-bold text-gray-900">数据同步</h2>
-
-      {/* User Token Input */}
-      <div>
-        <label
-          htmlFor="sync-token"
-          className="block text-sm font-medium text-gray-700 mb-1"
-        >
-          User Token
-        </label>
-        <input
-          id="sync-token"
-          type="password"
-          value={userToken}
-          onChange={(e) => setUserToken(e.target.value)}
-          placeholder="输入你的同步 Token"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
-
-      {/* Author Name Input */}
-      <div>
-        <label
-          htmlFor="sync-author"
-          className="block text-sm font-medium text-gray-700 mb-1"
-        >
-          昵称
-        </label>
-        <input
-          id="sync-author"
-          type="text"
-          value={authorName}
-          onChange={(e) => setAuthorName(e.target.value)}
-          placeholder="输入你的昵称"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-3">
-        <button
-          onClick={handlePush}
-          disabled={isPushing || isPulling}
-          className="flex-1 py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg
-                     hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors duration-200 text-sm"
-        >
-          {isPushing ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-              推送中...
-            </span>
-          ) : (
-            '⬆ 推送变更'
-          )}
-        </button>
-        <button
-          onClick={handlePull}
-          disabled={isPushing || isPulling}
-          className="flex-1 py-2.5 px-4 bg-green-600 text-white font-medium rounded-lg
-                     hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors duration-200 text-sm"
-        >
-          {isPulling ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-              拉取中...
-            </span>
-          ) : (
-            '⬇ 拉取数据'
-          )}
-        </button>
-      </div>
-
-      {/* Result Message */}
-      {message && (
-        <div
-          className={`p-3 rounded-lg text-sm ${
-            message.type === 'success'
-              ? 'bg-green-50 border border-green-200 text-green-700'
-              : 'bg-red-50 border border-red-200 text-red-700'
-          }`}
-        >
-          {message.type === 'success' ? '✓' : '✕'} {message.text}
+    <section className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">同步控制</h2>
+          <p className="mt-0.5 text-xs text-gray-500">使用本机保存的同步身份</p>
         </div>
-      )}
-
-      {/* Changelog Count */}
-      <div className="pt-3 border-t border-gray-100">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-500">待同步变更</span>
-          <span className="font-medium text-gray-700">
-            {changelogCount} 条记录
-          </span>
-        </div>
+        <Link
+          href="/identity"
+          className="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+        >
+          身份设置
+        </Link>
       </div>
-    </div>
+
+      <div className="p-5 space-y-4">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+            <p className="text-xs text-gray-500">未提交</p>
+            <p className="mt-1 text-2xl font-semibold text-gray-900">{draftCount}</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+            <p className="text-xs text-gray-500">审核中</p>
+            <p className="mt-1 text-2xl font-semibold text-gray-900">{pendingCount}</p>
+          </div>
+        </div>
+
+        {loaded && !hasIdentity ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-medium text-amber-900">未配置同步身份</p>
+            <p className="mt-1 text-xs leading-5 text-amber-800">
+              先验证并保存 User Token，再进行拉取或推送。
+            </p>
+            <Link
+              href="/identity"
+              className="mt-3 inline-flex px-3 py-2 bg-amber-700 text-white text-sm font-medium rounded-md hover:bg-amber-800 transition-colors"
+            >
+              去设置身份
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-green-800">当前身份</p>
+                <p className="mt-1 truncate text-sm text-green-950">{identity.authorName || '未填写昵称'}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-xs text-green-700 border border-green-200">
+                已保存
+              </span>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+              <span className="text-green-700">User Token</span>
+              <span className="font-mono text-green-950">
+                {identity.token ? `${identity.token.slice(0, 8)}...${identity.token.slice(-4)}` : '未配置'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            onClick={handlePull}
+            disabled={!hasIdentity || isPushing || isPulling}
+            className="flex h-11 items-center justify-center gap-2 rounded-md bg-gray-900 px-4 text-sm font-medium text-white
+                       hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2
+                       disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+          >
+            {isPulling ? (
+              <>
+                <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/40 border-t-white" />
+                拉取中
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" />
+                </svg>
+                拉取云端数据
+              </>
+            )}
+          </button>
+          <button
+            onClick={handlePush}
+            disabled={!hasIdentity || isPushing || isPulling}
+            className="flex h-11 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-800
+                       hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2
+                       disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+          >
+            {isPushing ? (
+              <>
+                <span className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-gray-800" />
+                推送中
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21V9m0 0l-4 4m4-4l4 4M4 3h16" />
+                </svg>
+                推送本机变更
+              </>
+            )}
+          </button>
+        </div>
+
+        {message && (
+          <div
+            className={`p-3 rounded-lg text-sm ${
+              message.type === 'success'
+                ? 'bg-green-50 border border-green-200 text-green-700'
+                : 'bg-red-50 border border-red-200 text-red-700'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

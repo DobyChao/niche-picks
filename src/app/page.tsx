@@ -1,94 +1,224 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import ShopList from '@/components/shop/ShopList';
 import ShopForm from '@/components/shop/ShopForm';
 import ReviewForm from '@/components/review/ReviewForm';
-import type { LocalShop, LocalReview } from '@/lib/types';
+import { useMergedShops, useMergedReviews, deleteShop, deleteReview, getOriginalShop, getOriginalReview } from '@/lib/db';
+import type { MergedShop, MergedReview, ServerShop, ServerReview } from '@/lib/types';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
 
 export default function HomePage() {
-  const [shops, setShops] = useState<LocalShop[]>([]);
   const [showShopForm, setShowShopForm] = useState(false);
-  const [editingShop, setEditingShop] = useState<LocalShop | undefined>(undefined);
-  const [selectedShop, setSelectedShop] = useState<LocalShop | null>(null);
+  const [editingShop, setEditingShop] = useState<MergedShop | undefined>(undefined);
+  const [selectedShop, setSelectedShop] = useState<MergedShop | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [editingReview, setEditingReview] = useState<LocalReview | undefined>(undefined);
-  const [shopReviews, setShopReviews] = useState<LocalReview[]>([]);
-  const [mapPickedCoords, setMapPickedCoords] = useState<{ lng: number; lat: number } | null>(null);
+  const [editingReview, setEditingReview] = useState<MergedReview | undefined>(undefined);
+  const [flyToShop, setFlyToShop] = useState<MergedShop | null>(null);
+  const [prefilledFormData, setPrefilledFormData] = useState<{
+    lng: number;
+    lat: number;
+    address: string;
+    name?: string;
+    category?: string;
+    phone?: string;
+    amapPoiId?: string;
+  } | null>(null);
+  const [showOriginalShop, setShowOriginalShop] = useState(false);
+  const [originalShopData, setOriginalShopData] = useState<ServerShop | null>(null);
+  const [reviewOriginalIds, setReviewOriginalIds] = useState<Set<string>>(new Set());
+  const [originalReviewData, setOriginalReviewData] = useState<Map<string, ServerReview>>(new Map());
+  const [repickMode, setRepickMode] = useState(false);
+  const [repickEditingShop, setRepickEditingShop] = useState<MergedShop | null>(null);
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+
+  // Resizable sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState(420);
+  const [mapMobileHeight, setMapMobileHeight] = useState<number | null>(null);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ startPos: number; startSize: number } | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const { db } = await import('@/lib/db');
-      const allShops = await db.shops.filter((s) => !s.isDeleted).toArray();
-      setShops(allShops);
-    })();
+    const mql = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
   }, []);
 
-  const refreshShops = useCallback(async () => {
-    const { db } = await import('@/lib/db');
-    const allShops = await db.shops.filter((s) => !s.isDeleted).toArray();
-    setShops(allShops);
+  const SIDEBAR_MIN = 280;
+  const SIDEBAR_MAX = 600;
+
+  const handleDesktopPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (panelCollapsed) return;
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { startPos: e.clientX, startSize: sidebarWidth };
+    setIsDragging(true);
+  }, [panelCollapsed, sidebarWidth]);
+
+  const handleDesktopPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const delta = dragRef.current.startPos - e.clientX;
+    setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, dragRef.current.startSize + delta)));
   }, []);
 
-  const handleShopSaved = async () => {
-    await refreshShops();
+  const handleMobilePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (panelCollapsed) return;
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const startSize = mapMobileHeight ?? window.innerHeight * 0.4;
+    dragRef.current = { startPos: e.clientY, startSize };
+    setIsDragging(true);
+  }, [panelCollapsed, mapMobileHeight]);
+
+  const handleMobilePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const delta = e.clientY - dragRef.current.startPos;
+    setMapMobileHeight(Math.max(80, Math.min(window.innerHeight * 0.8, dragRef.current.startSize + delta)));
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+    setIsDragging(false);
+  }, []);
+
+  // Load original shop data when toggled
+  useEffect(() => {
+    if (selectedShop && showOriginalShop && (selectedShop._syncBadge === 'draft' || selectedShop._syncBadge === 'pending')) {
+      getOriginalShop(selectedShop.id).then(setOriginalShopData);
+    } else {
+      setOriginalShopData(null);
+    }
+  }, [selectedShop, showOriginalShop]);
+
+  // Reset toggle when shop changes
+  useEffect(() => {
+    setShowOriginalShop(false);
+    setReviewOriginalIds(new Set());
+    setOriginalReviewData(new Map());
+  }, [selectedShop?.id]);
+
+  const shops = useMergedShops();
+  const shopReviews = useMergedReviews(selectedShop?.id);
+
+  const handleShopSaved = useCallback(() => {
     setShowShopForm(false);
     setEditingShop(undefined);
-  };
+    setPrefilledFormData(null);
+    setRepickMode(false);
+    setRepickEditingShop(null);
+  }, []);
 
-  const handleShopClick = (shop: LocalShop) => {
+  const handleShopClick = useCallback((shop: MergedShop) => {
     setSelectedShop(shop);
     setEditingReview(undefined);
     setShowReviewForm(false);
-    loadShopReviews(shop.id);
-  };
-
-  const loadShopReviews = async (shopId: string) => {
-    const { db } = await import('@/lib/db');
-    const reviews = await db.reviews
-      .where('shopId')
-      .equals(shopId)
-      .filter((r) => !r.isDeleted)
-      .toArray();
-    setShopReviews(reviews);
-  };
-
-  const handleAddReview = () => {
-    setEditingReview(undefined);
-    setShowReviewForm(true);
-  };
-
-  const handleEditReview = (review: LocalReview) => {
-    setEditingReview(review);
-    setShowReviewForm(true);
-  };
-
-  const handleReviewSaved = async () => {
-    setShowReviewForm(false);
-    setEditingReview(undefined);
-    if (selectedShop) {
-      await loadShopReviews(selectedShop.id);
-    }
-  };
-
-  const handleMapClick = useCallback((lng: number, lat: number) => {
-    setMapPickedCoords({ lng, lat });
+    setFlyToShop(shop);
   }, []);
 
-  const handleOpenShopForm = () => {
-    setEditingShop(undefined);
-    setMapPickedCoords(null);
-    setShowShopForm(true);
-  };
+  const handleAddReview = useCallback(() => {
+    setEditingReview(undefined);
+    setShowReviewForm(true);
+  }, []);
 
-  const handleOpenEditShop = (shop: LocalShop) => {
-    setEditingShop(shop);
-    setMapPickedCoords(null);
+  const handleEditReview = useCallback((review: MergedReview) => {
+    setEditingReview(review);
+    setShowReviewForm(true);
+  }, []);
+
+  const handleReviewSaved = useCallback(() => {
+    setShowReviewForm(false);
+    setEditingReview(undefined);
+  }, []);
+
+  const handleMapActionAddShop = useCallback((data: {
+    lng: number; lat: number; address: string;
+    name?: string; category?: string; phone?: string; amapPoiId?: string;
+  }) => {
+    if (repickMode && repickEditingShop) {
+      // Re-pick flow: reopen form with updated coords
+      setPrefilledFormData(data);
+      setEditingShop(repickEditingShop);
+      setRepickMode(false);
+      setRepickEditingShop(null);
+      setShowShopForm(true);
+    } else {
+      // Normal flow: create new shop
+      setPrefilledFormData(data);
+      setEditingShop(undefined);
+      setShowShopForm(true);
+    }
+  }, [repickMode, repickEditingShop]);
+
+  const handleRepickLocation = useCallback(() => {
+    if (!editingShop) return;
+    setRepickEditingShop(editingShop);
+    setShowShopForm(false);
+    setRepickMode(true);
+  }, [editingShop]);
+
+  const handleOpenShopForm = useCallback(() => {
+    setEditingShop(undefined);
+    setPrefilledFormData(null);
     setShowShopForm(true);
-  };
+  }, []);
+
+  const handleOpenEditShop = useCallback((shop: MergedShop) => {
+    setEditingShop(shop);
+    setPrefilledFormData(null);
+    setShowShopForm(true);
+  }, []);
+
+  const handleDeleteShop = useCallback(async (shop: MergedShop) => {
+    setConfirmState({
+      title: '删除店铺',
+      message: `确定要删除「${shop.name}」吗？删除后无法恢复。`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        await deleteShop(shop.id);
+        setSelectedShop(null);
+        setShowReviewForm(false);
+      },
+    });
+  }, []);
+
+  const handleDeleteReview = useCallback(async (review: MergedReview) => {
+    setConfirmState({
+      title: '删除点评',
+      message: '确定要删除这条点评吗？删除后无法恢复。',
+      onConfirm: async () => {
+        setConfirmState(null);
+        await deleteReview(review.id);
+      },
+    });
+  }, []);
+
+  const toggleReviewOriginal = useCallback(async (review: MergedReview) => {
+    setReviewOriginalIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(review.id)) {
+        next.delete(review.id);
+      } else {
+        next.add(review.id);
+        getOriginalReview(review.id).then((data) => {
+          if (data) {
+            setOriginalReviewData((prev) => {
+              const next = new Map(prev);
+              next.set(review.id, data);
+              return next;
+            });
+          }
+        });
+      }
+      return next;
+    });
+  }, []);
 
   const renderStars = (rating: number) => {
     return '★'.repeat(rating) + '☆'.repeat(5 - rating);
@@ -96,181 +226,333 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col md:flex-row flex-1 min-h-0 h-full relative">
-      {/* Desktop: Map on left (flex-1), Mobile: Map on top (40vh) */}
-      <div className="h-[40vh] md:flex-1 md:min-h-0 relative">
-        <MapView
-          shops={shops}
-          onMapClick={handleMapClick}
-          pickMode={showShopForm}
-        />
-      </div>
-
-      {/* Desktop: Fixed 420px sidebar on right */}
-      <div className="flex-1 md:flex-none md:w-[420px] md:h-full overflow-y-auto bg-white border-l border-gray-200 shadow-sm">
-        {/* Sidebar header with add button */}
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800">
-            {selectedShop ? selectedShop.name : '店铺列表'}
-          </h2>
-          {selectedShop ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setSelectedShop(null);
-                  setShopReviews([]);
-                  setShowReviewForm(false);
-                }}
-                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                ← 返回列表
-              </button>
-              <button
-                onClick={() => handleOpenEditShop(selectedShop)}
-                className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                编辑店铺
-              </button>
-            </div>
-          ) : (
+      {/* Map */}
+      <div
+        className="relative overflow-hidden"
+        style={isDesktop
+          ? { flex: '1 1 0%', minWidth: 0, height: '100%' }
+          : { height: panelCollapsed ? 40 : (mapMobileHeight ?? '40vh'), flex: 'none', width: '100%' }
+        }
+      >
+        {panelCollapsed && !isDesktop ? (
+          <div className="h-full flex items-center justify-center bg-gray-100">
             <button
-              onClick={handleOpenShopForm}
-              className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={() => setPanelCollapsed(false)}
+              className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              新增店铺
+              展开地图
             </button>
-          )}
-        </div>
-
-        {/* Shop list or shop detail */}
-        {selectedShop ? (
-          <div className="p-4 space-y-4">
-            {/* Shop Info */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-              {selectedShop.category && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {selectedShop.category}
-                </span>
-              )}
-              {selectedShop.address && (
-                <p className="text-sm text-gray-600">📍 {selectedShop.address}</p>
-              )}
-              {selectedShop.phone && (
-                <p className="text-sm text-gray-600">📞 {selectedShop.phone}</p>
-              )}
-              {selectedShop.businessHours && (
-                <p className="text-sm text-gray-600">🕐 {selectedShop.businessHours}</p>
-              )}
-              {selectedShop.tags && selectedShop.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {selectedShop.tags.map((tag, i) => (
-                    <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Reviews Section */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-700">
-                  点评 ({shopReviews.length})
-                </h3>
-                <button
-                  onClick={handleAddReview}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white text-xs font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  写点评
-                </button>
-              </div>
-
-              {/* Review Form */}
-              {showReviewForm && (
-                <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">
-                    {editingReview ? '编辑点评' : '新增点评'}
-                  </h4>
-                  <ReviewForm
-                    shopId={selectedShop.id}
-                    review={editingReview}
-                    onSubmit={handleReviewSaved}
-                    onCancel={() => { setShowReviewForm(false); setEditingReview(undefined); }}
-                  />
-                </div>
-              )}
-
-              {/* Review List */}
-              {shopReviews.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <p className="text-sm">还没有点评</p>
-                  <p className="text-xs mt-1">点击"写点评"分享你的体验</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {shopReviews.map((review) => (
-                    <div
-                      key={review.id}
-                      className="bg-white border border-gray-100 rounded-lg p-3 hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-yellow-500 text-sm">{renderStars(review.rating)}</span>
-                        {review.avgPrice != null && (
-                          <span className="text-xs text-gray-500">¥{review.avgPrice}/人</span>
-                        )}
-                      </div>
-                      {review.author && (
-                        <p className="text-xs text-gray-500 mb-1">{review.author}</p>
-                      )}
-                      {review.content && (
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{review.content}</p>
-                      )}
-                      {review.tags && review.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {review.tags.map((tag, i) => (
-                            <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {review.visitDate && (
-                        <p className="text-xs text-gray-400 mt-2">到访: {review.visitDate}</p>
-                      )}
-                      <div className="flex justify-end mt-2">
-                        <button
-                          onClick={() => handleEditReview(review)}
-                          className="text-xs text-blue-500 hover:text-blue-700"
-                        >
-                          编辑
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         ) : (
-          <ShopList onShopClick={handleShopClick} />
+          <MapView
+            shops={shops ?? []}
+            onMapActionAddShop={handleMapActionAddShop}
+            flyToShop={flyToShop}
+            selectedShopId={selectedShop?.id ?? null}
+            repickMode={repickMode}
+            onShopSelect={(shop) => handleShopClick(shop)}
+            onEditShop={(shop) => handleOpenEditShop(shop)}
+          />
         )}
       </div>
 
-      {/* Mobile floating add button */}
-      {!selectedShop && (
+      {/* Resize handles */}
+      {!panelCollapsed && (
+        <>
+          <div
+            className="md:hidden h-1.5 bg-gray-200/80 hover:bg-blue-400 active:bg-blue-500 cursor-row-resize touch-none shrink-0"
+            onPointerDown={handleMobilePointerDown}
+            onPointerMove={handleMobilePointerMove}
+            onPointerUp={handlePointerUp}
+          />
+          <div
+            className="hidden md:block w-1.5 bg-gray-200/80 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize touch-none shrink-0"
+            onPointerDown={handleDesktopPointerDown}
+            onPointerMove={handleDesktopPointerMove}
+            onPointerUp={handlePointerUp}
+          />
+        </>
+      )}
+
+      {/* Sidebar */}
+      <div
+        className="relative overflow-hidden bg-white shadow-sm"
+        style={isDesktop
+          ? {
+              width: panelCollapsed ? 0 : sidebarWidth,
+              height: '100%',
+              flex: 'none',
+              transition: isDragging ? 'none' : 'width 200ms ease',
+            }
+          : {
+              flex: '1 1 0%',
+              minHeight: 0,
+            }
+        }
+      >
+        <div className={`h-full flex flex-col ${isDesktop ? 'border-l border-gray-200' : ''}`}>
+          {/* Sidebar header with add/collapse buttons */}
+          <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {isDesktop && !panelCollapsed && (
+                <button
+                  onClick={() => setPanelCollapsed(true)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+                  title="折叠面板"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7" />
+                  </svg>
+                </button>
+              )}
+              <h2 className="text-lg font-semibold text-gray-800 truncate">
+                {selectedShop ? selectedShop.name : '店铺列表'}
+              </h2>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {!isDesktop && !panelCollapsed && (
+                <button
+                  onClick={() => setPanelCollapsed(true)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="折叠地图"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+              )}
+              {selectedShop ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setSelectedShop(null);
+                      setFlyToShop(null);
+                      setShowReviewForm(false);
+                    }}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    ← 返回列表
+                  </button>
+                  <button
+                    onClick={() => handleOpenEditShop(selectedShop)}
+                    className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    编辑店铺
+                  </button>
+                  <button
+                    onClick={() => handleDeleteShop(selectedShop)}
+                    className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    删除
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleOpenShopForm}
+                  className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  新增店铺
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Scrollable content area */}
+          <div className="flex-1 overflow-y-auto">
+            {selectedShop ? (
+              <div className="p-4 space-y-4">
+                {/* Draft/Original Toggle */}
+                {(selectedShop._syncBadge === 'draft' || selectedShop._syncBadge === 'pending') && (
+                  <div className="flex items-center gap-2 p-2.5 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <span className="text-xs text-yellow-700 font-medium">
+                      {selectedShop._syncBadge === 'draft' ? '有未提交的修改' : '修改同步中'}
+                    </span>
+                    {originalShopData ? (
+                      <div className="flex-1 flex justify-end">
+                        <button
+                          onClick={() => setShowOriginalShop(!showOriginalShop)}
+                          className="text-xs px-2.5 py-1 rounded-md font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+                        >
+                          {showOriginalShop ? '显示变更' : '显示原始'}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-yellow-600 ml-auto">新创建</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Shop Info */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  {(() => {
+                    const displayShop = showOriginalShop && originalShopData ? originalShopData : selectedShop;
+                    return (
+                      <>
+                        {displayShop.category && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {displayShop.category}
+                          </span>
+                        )}
+                        {displayShop.address && (
+                          <p className="text-sm text-gray-600">📍 {displayShop.address}</p>
+                        )}
+                        {displayShop.phone && (
+                          <p className="text-sm text-gray-600">📞 {displayShop.phone}</p>
+                        )}
+                        {displayShop.businessHours && (
+                          <p className="text-sm text-gray-600">🕐 {displayShop.businessHours}</p>
+                        )}
+                        {displayShop.tags && displayShop.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {displayShop.tags.map((tag, i) => (
+                              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* Reviews Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">
+                      点评 ({shopReviews?.length ?? 0})
+                    </h3>
+                    <button
+                      onClick={handleAddReview}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white text-xs font-medium rounded-lg hover:bg-orange-600 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                      写点评
+                    </button>
+                  </div>
+
+                  {/* Review Form */}
+                  {showReviewForm && (
+                    <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">
+                        {editingReview ? '编辑点评' : '新增点评'}
+                      </h4>
+                      <ReviewForm
+                        shopId={selectedShop.id}
+                        review={editingReview}
+                        onSubmit={handleReviewSaved}
+                        onCancel={() => { setShowReviewForm(false); setEditingReview(undefined); }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Review List */}
+                  {(!shopReviews || shopReviews.length === 0) ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <p className="text-sm">还没有点评</p>
+                      <p className="text-xs mt-1">点击"写点评"分享你的体验</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {shopReviews.map((review) => {
+                        const isShowingOriginal = reviewOriginalIds.has(review.id);
+                        const originalReview = isShowingOriginal ? originalReviewData.get(review.id) : null;
+                        const displayReview = isShowingOriginal && originalReview ? originalReview : review;
+
+                        return (
+                          <div
+                            key={review.id}
+                            className="bg-white border border-gray-100 rounded-lg p-3 hover:shadow-sm transition-shadow"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-yellow-500 text-sm">{renderStars(displayReview.rating)}</span>
+                              <div className="flex items-center gap-2">
+                                {displayReview.avgPrice != null && (
+                                  <span className="text-xs text-gray-500">¥{displayReview.avgPrice}/人</span>
+                                )}
+                                {(review._syncBadge === 'draft' || review._syncBadge === 'pending') && (
+                                  <button
+                                    onClick={() => toggleReviewOriginal(review)}
+                                    className="text-xs px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors"
+                                  >
+                                    {isShowingOriginal ? '显示变更' : '显示原始'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {displayReview.author && (
+                              <p className="text-xs text-gray-500 mb-1">{displayReview.author}</p>
+                            )}
+                            {displayReview.content && (
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{displayReview.content}</p>
+                            )}
+                            {displayReview.tags && displayReview.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {displayReview.tags.map((tag, i) => (
+                                  <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {displayReview.visitDate && (
+                              <p className="text-xs text-gray-400 mt-2">到访: {displayReview.visitDate}</p>
+                            )}
+                            <div className="flex justify-end mt-2 gap-3">
+                              <button
+                                onClick={() => handleEditReview(review)}
+                                className="text-xs text-blue-500 hover:text-blue-700"
+                              >
+                                编辑
+                              </button>
+                              <button
+                                onClick={() => handleDeleteReview(review)}
+                                className="text-xs text-red-500 hover:text-red-700"
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <ShopList onShopClick={handleShopClick} />
+            )}
+          </div>
+        </div>
+
+        {/* Mobile FAB (inside sidebar, absolute positioned) */}
+        {!selectedShop && (
+          <button
+            onClick={handleOpenShopForm}
+            className="md:hidden absolute bottom-6 right-6 z-30 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all"
+            aria-label="新增店铺"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Desktop expand button (when sidebar collapsed) */}
+      {panelCollapsed && isDesktop && (
         <button
-          onClick={handleOpenShopForm}
-          className="md:hidden fixed bottom-6 right-6 z-30 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all"
-          aria-label="新增店铺"
+          onClick={() => setPanelCollapsed(false)}
+          className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-16 bg-white border border-gray-200 rounded-l-lg shadow-md items-center justify-center hover:bg-gray-50 transition-colors"
+          title="展开面板"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M17 19l-7-7 7-7" />
           </svg>
         </button>
       )}
@@ -284,7 +566,7 @@ export default function HomePage() {
                 {editingShop ? '编辑店铺' : '新增店铺'}
               </h3>
               <button
-                onClick={() => { setShowShopForm(false); setEditingShop(undefined); }}
+                onClick={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
                 className="p-1 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
                 aria-label="关闭"
               >
@@ -293,22 +575,28 @@ export default function HomePage() {
                 </svg>
               </button>
             </div>
-            {showShopForm && !editingShop && (
-              <p className="px-6 pt-3 text-xs text-blue-600 bg-blue-50 py-2">
-                💡 提示：可以在地图上点击选取坐标
-              </p>
-            )}
             <div className="p-6">
               <ShopForm
                 shop={editingShop}
-                pickedCoords={mapPickedCoords}
+                prefilledData={prefilledFormData}
                 onSubmit={handleShopSaved}
-                onCancel={() => { setShowShopForm(false); setEditingShop(undefined); }}
+                onCancel={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+                onRepickLocation={editingShop ? handleRepickLocation : undefined}
               />
             </div>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText="删除"
+        variant="danger"
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }

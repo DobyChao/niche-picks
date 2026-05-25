@@ -2,6 +2,18 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Create a local environment file with the AMap browser key and server-only
+security code:
+
+```bash
+NEXT_PUBLIC_AMAP_KEY=your_web_js_api_key
+AMAP_SECURITY_CODE=your_security_jscode
+```
+
+The browser only receives `NEXT_PUBLIC_AMAP_KEY`. AMap Web service requests are
+forwarded through `/_AMapService/*`, where the server appends
+`AMAP_SECURITY_CODE` before proxying to AMap.
+
 First, run the development server:
 
 ```bash

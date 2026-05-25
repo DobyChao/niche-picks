@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useLiveQuery, getActiveShops } from '@/lib/db';
+import { useMergedShops } from '@/lib/db';
 import ShopCard from './ShopCard';
-import type { LocalShop } from '@/lib/types';
+import type { MergedShop } from '@/lib/types';
 
 interface ShopListProps {
-  onShopClick?: (shop: LocalShop) => void;
+  onShopClick?: (shop: MergedShop) => void;
 }
 
 export default function ShopList({ onShopClick }: ShopListProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const shops = useLiveQuery(() => getActiveShops());
+  const shops = useMergedShops();
 
   const filteredShops = useMemo(() => {
     if (!shops) return [];
@@ -19,7 +19,7 @@ export default function ShopList({ onShopClick }: ShopListProps) {
 
     const query = searchQuery.trim().toLowerCase();
     return shops.filter(
-      (shop: LocalShop) =>
+      (shop: MergedShop) =>
         shop.name.toLowerCase().includes(query) ||
         (shop.category && shop.category.toLowerCase().includes(query)) ||
         (shop.tags &&
@@ -28,9 +28,9 @@ export default function ShopList({ onShopClick }: ShopListProps) {
   }, [shops, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Search Input */}
-      <div className="sticky top-0 z-10 bg-white pb-3 border-b border-gray-100">
+    <>
+      {/* Search Input — sticky so it stays visible while scrolling */}
+      <div className="sticky top-0 z-10 bg-white px-4 pb-3 pt-2 border-b border-gray-100">
         <div className="relative">
           <svg
             className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
@@ -66,7 +66,7 @@ export default function ShopList({ onShopClick }: ShopListProps) {
       </div>
 
       {/* Shop List */}
-      <div className="flex-1 overflow-y-auto py-3 px-4 space-y-3">
+      <div className="px-4 pb-4 space-y-3">
         {shops === undefined ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
@@ -97,7 +97,7 @@ export default function ShopList({ onShopClick }: ShopListProps) {
             </p>
           </div>
         ) : (
-          filteredShops.map((shop: LocalShop) => (
+          filteredShops.map((shop: MergedShop) => (
             <ShopCard
               key={shop.id}
               shop={shop}
@@ -106,18 +106,6 @@ export default function ShopList({ onShopClick }: ShopListProps) {
           ))
         )}
       </div>
-
-      {/* Footer count */}
-      {shops && shops.length > 0 && (
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-4 py-2 text-center">
-          <span className="text-xs text-gray-400">
-            共 {filteredShops.length} 家店铺
-            {searchQuery && shops.length !== filteredShops.length && (
-              <span> (总计 {shops.length})</span>
-            )}
-          </span>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

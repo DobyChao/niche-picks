@@ -1,28 +1,27 @@
 'use client';
 
-import type { LocalShop, SyncStatus } from '@/lib/types';
+import type { MergedShop, SyncBadge } from '@/lib/types';
+import { getCategoryColor } from '@/lib/utils';
 
 interface ShopCardProps {
-  shop: LocalShop;
+  shop: MergedShop;
   onClick?: () => void;
 }
 
-function getSyncBadge(syncStatus?: SyncStatus) {
-  if (!syncStatus) return { emoji: '⚪', label: '未知', color: 'bg-gray-100 text-gray-600' };
-
-  switch (syncStatus) {
-    case 'local_modified':
+function getSyncBadge(badge: SyncBadge) {
+  switch (badge) {
+    case 'draft':
+      return { emoji: '🟢', label: '未提交', color: 'bg-yellow-100 text-yellow-700' };
     case 'pending':
-      return { emoji: '🟢', label: '待同步', color: 'bg-yellow-100 text-yellow-700' };
+      return { emoji: '🟡', label: '同步中', color: 'bg-orange-100 text-orange-700' };
     case 'synced':
       return { emoji: '🔵', label: '已同步', color: 'bg-green-100 text-green-700' };
-    default:
-      return { emoji: '⚪', label: '未知', color: 'bg-gray-100 text-gray-600' };
   }
 }
 
 export default function ShopCard({ shop, onClick }: ShopCardProps) {
-  const syncBadge = getSyncBadge(shop._syncStatus);
+  const syncBadge = getSyncBadge(shop._syncBadge);
+  const catColor = getCategoryColor(shop.category);
 
   return (
     <div
@@ -43,11 +42,28 @@ export default function ShopCard({ shop, onClick }: ShopCardProps) {
           {shop.name}
         </h3>
         {shop.category && (
-          <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <span
+            className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+            style={{ backgroundColor: catColor }}
+          >
             {shop.category}
           </span>
         )}
       </div>
+
+      {/* Rating row */}
+      {shop.reviewCount > 0 && (
+        <div className="mt-1.5 flex items-center gap-2 text-sm">
+          <span className="text-amber-500">
+            {'★'.repeat(Math.round(shop.avgRating ?? 0))}{'☆'.repeat(5 - Math.round(shop.avgRating ?? 0))}
+          </span>
+          <span className="text-gray-400 text-xs">{shop.avgRating?.toFixed(1)}</span>
+          <span className="text-gray-400 text-xs">({shop.reviewCount}条)</span>
+          {shop.avgPrice != null && (
+            <span className="text-gray-400 text-xs">人均¥{Math.round(shop.avgPrice)}</span>
+          )}
+        </div>
+      )}
 
       {/* Address */}
       {shop.address && (

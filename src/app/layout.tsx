@@ -39,6 +39,12 @@ function NavHeader() {
             同步
           </Link>
           <Link
+            href="/identity"
+            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+          >
+            身份
+          </Link>
+          <Link
             href="/admin"
             className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
           >
@@ -62,7 +68,7 @@ export default function RootLayout({
     >
       <body className="h-full flex flex-col bg-gray-50">
         <NavHeader />
-        <main className="flex-1 flex flex-col min-h-0 overflow-hidden">{children}</main>
+        <main className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">{children}</main>
       </body>
     </html>
   );
