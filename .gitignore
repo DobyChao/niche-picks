@@ -42,5 +42,15 @@ next-env.d.ts
 data/
 .env.local
 
+# AI tool configs
+CLAUDE.md
+PLAN.md
+SPEC.md
+opencode.json
+
+# test artifacts
+playwright-report/
+test-results/
+
 # other
 .research/
