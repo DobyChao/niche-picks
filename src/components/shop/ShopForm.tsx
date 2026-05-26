@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { addShop, updateShop } from '@/lib/db';
 import type { MergedShop } from '@/lib/types';
 
@@ -29,6 +29,16 @@ interface FormErrors {
   general?: string;
 }
 
+interface PoiSuggestion {
+  name: string;
+  address: string;
+  category?: string;
+  phone?: string;
+  amapPoiId?: string;
+  lng: number;
+  lat: number;
+}
+
 export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRepickLocation }: ShopFormProps) {
   const isEditing = !!shop;
 
@@ -44,6 +54,23 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Suggestion state
+  const [suggestions, setSuggestions] = useState<PoiSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const placeSearchRef = useRef<any>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Load AMap plugin
+  useEffect(() => {
+    const AMap = (window as any).AMap;
+    if (!AMap) return;
+    AMap.plugin(['AMap.PlaceSearch'], () => {
+      placeSearchRef.current = new AMap.PlaceSearch({ pageSize: 10, extensions: 'all' });
+    });
+  }, []);
 
   useEffect(() => {
     if (shop) {
@@ -86,6 +113,96 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
       }
     }
   }, [prefilledData, shop]);
+
+  // Close suggestions on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const fetchSuggestions = useCallback((keyword: string) => {
+    const AMap = (window as any).AMap;
+    if (!AMap) return;
+
+    const lngNum = Number(lng);
+    const latNum = Number(lat);
+    const hasCoords = !isNaN(lngNum) && !isNaN(latNum) && lngNum !== 0;
+    if (!hasCoords) { setSuggestions([]); setSuggestLoading(false); return; }
+    if (!placeSearchRef.current) return;
+
+    const radius = keyword.trim() ? 2000 : 500;
+    placeSearchRef.current.searchNearBy(keyword.trim(), [lngNum, latNum], radius, (status: string, result: any) => {
+      setSuggestLoading(false);
+      if (status === 'complete' && result?.poiList?.pois) {
+        const items: PoiSuggestion[] = result.poiList.pois.map((poi: any) => ({
+          name: poi.name || '',
+          address: poi.address || poi.pname + poi.cityname + poi.adname || '',
+          category: poi.type ? poi.type.split(';')[0] : undefined,
+          phone: poi.tel || undefined,
+          amapPoiId: poi.id || undefined,
+          lng: poi.location?.lng ?? lngNum,
+          lat: poi.location?.lat ?? latNum,
+        }));
+        setSuggestions(items.slice(0, 8));
+        setShowSuggestions(true);
+      } else {
+        setSuggestions([]);
+      }
+    });
+  }, [lng, lat]);
+
+  const handleNameFocus = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSuggestLoading(true);
+    debounceRef.current = setTimeout(() => {
+      fetchSuggestions(name);
+    }, name.trim() ? 1000 : 300);
+  }, [name, fetchSuggestions]);
+
+  const handleNameChange = useCallback((value: string) => {
+    setName(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!value.trim()) {
+      // Cleared input → show nearby if coords exist
+      const lngNum = Number(lng);
+      const latNum = Number(lat);
+      if (!isNaN(lngNum) && !isNaN(latNum) && lngNum !== 0) {
+        setSuggestLoading(true);
+        debounceRef.current = setTimeout(() => {
+          fetchSuggestions('');
+        }, 1000);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    setSuggestLoading(true);
+    debounceRef.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 1000);
+  }, [lng, lat, fetchSuggestions]);
+
+  const handleSelectSuggestion = useCallback((poi: PoiSuggestion) => {
+    setName(poi.name);
+    if (poi.address) setAddress(poi.address);
+    if (poi.category) setCategory(poi.category);
+    if (poi.phone) setPhone(poi.phone);
+    if (poi.amapPoiId) setAmapPoiId(poi.amapPoiId);
+    if (poi.lng && poi.lat) {
+      setLng(poi.lng.toFixed(6));
+      setLat(poi.lat.toFixed(6));
+    }
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }, []);
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};
@@ -163,7 +280,8 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
         </div>
       )}
 
-      <div>
+      {/* Shop name with suggestions */}
+      <div ref={wrapperRef} className="relative">
         <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700 mb-1">
           店铺名称 <span className="text-red-500">*</span>
         </label>
@@ -171,14 +289,38 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
           id="shop-name"
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => handleNameChange(e.target.value)}
+          onFocus={handleNameFocus}
           placeholder="输入店铺名称"
+          autoComplete="off"
           className={`w-full px-3 py-2 border rounded-lg text-sm
                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                      placeholder-gray-400
                      ${errors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
         />
         {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
+
+        {showSuggestions && (suggestLoading || suggestions.length > 0) && (
+          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+            {suggestLoading && suggestions.length === 0 && (
+              <div className="flex items-center justify-center py-4">
+                <span className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+                <span className="ml-2 text-xs text-gray-400">搜索中...</span>
+              </div>
+            )}
+            {suggestions.map((poi, i) => (
+              <button
+                key={poi.amapPoiId ?? i}
+                type="button"
+                onClick={() => handleSelectSuggestion(poi)}
+                className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-b-0"
+              >
+                <div className="text-sm font-medium text-gray-800 truncate">{poi.name}</div>
+                <div className="text-xs text-gray-400 truncate mt-0.5">{poi.address}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>

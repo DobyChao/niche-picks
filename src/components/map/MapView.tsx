@@ -16,6 +16,14 @@ function haversineDistance(lng1: number, lat1: number, lng2: number, lat2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function getSearchRadius(zoom: number): number {
+  if (zoom >= 16) return 2000;
+  if (zoom >= 14) return 5000;
+  if (zoom >= 12) return 10000;
+  if (zoom >= 10) return 20000;
+  return 50000;
+}
+
 function buildShopInfoHtml(shop: MergedShop): string {
   const parts: string[] = [];
 
@@ -119,6 +127,10 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   const locationMarkerRef = useRef<any>(null);
   const infoWindowRef = useRef<any>(null);
   const selectedShopForInfoRef = useRef<MergedShop | null>(null);
+  const [currentCity, setCurrentCity] = useState('');
+  const [cityMode, setCityMode] = useState<'auto' | 'manual'>('auto');
+  const [showCityPicker, setShowCityPicker] = useState(false);
+  const lastGeocodeCenterRef = useRef<{ lng: number; lat: number } | null>(null);
 
   // Reverse geocode when action menu position changes (only if no address yet)
   useEffect(() => {
@@ -194,29 +206,104 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     poiMarkersRef.current = [];
   }, []);
 
-  // Handle POI search
+  // Helper: search local shops by keyword
+  const searchLocalShops = useCallback((keyword: string, center?: any) => {
+    const lowerKw = keyword.toLowerCase();
+    return shops
+      .filter(s => !s.isDeleted && typeof s.lng === 'number' && typeof s.lat === 'number')
+      .filter(s => {
+        const name = (s.name || '').toLowerCase();
+        const address = (s.address || '').toLowerCase();
+        const category = (s.category || '').toLowerCase();
+        const tags = (s.tags || []).join(' ').toLowerCase();
+        return name.includes(lowerKw) || address.includes(lowerKw) || category.includes(lowerKw) || tags.includes(lowerKw);
+      })
+      .map(s => ({
+        name: s.name,
+        address: s.address || '',
+        lng: s.lng!,
+        lat: s.lat!,
+        category: s.category || undefined,
+        phone: s.phone || undefined,
+        distance: center
+          ? haversineDistance(center.lng, center.lat, s.lng!, s.lat!)
+          : undefined,
+        isLocalShop: true as const,
+        shopId: s.id,
+      }));
+  }, [shops]);
+
+  // Unified search: searchNearBy with local shops merged
   const handleSearch = useCallback((keyword: string, callback: (results: PoiResult[]) => void) => {
+    const center = mapInstanceRef.current?.getCenter();
+    const localResults = searchLocalShops(keyword, center);
+
     if (!placeSearchRef.current) {
-      callback([]);
+      localResults.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+      callback(localResults);
       return;
     }
 
-    placeSearchRef.current.search(keyword, (status: string, result: any) => {
-      if (status === 'complete' && result?.poiList?.pois) {
-        const pois: PoiResult[] = result.poiList.pois.map((poi: any) => ({
-          name: poi.name || '',
-          address: poi.address || poi.pname + poi.cityname + poi.adname || '',
-          lng: poi.location?.lng ?? 0,
-          lat: poi.location?.lat ?? 0,
-          category: poi.type ? poi.type.split(';')[0] : undefined,
-          phone: poi.tel || undefined,
-          amapPoiId: poi.id || undefined,
-        }));
-        callback(pois);
-      } else {
-        callback([]);
-      }
-    });
+    const AMap = (window as any).AMap;
+    const searchCallback = (status: string, result: any) => {
+      const amapPois: PoiResult[] = (status === 'complete' && result?.poiList?.pois)
+        ? result.poiList.pois.map((poi: any) => ({
+            name: poi.name || '',
+            address: poi.address || poi.pname + poi.cityname + poi.adname || '',
+            lng: poi.location?.lng ?? 0,
+            lat: poi.location?.lat ?? 0,
+            category: poi.type ? poi.type.split(';')[0] : undefined,
+            phone: poi.tel || undefined,
+            amapPoiId: poi.id || undefined,
+            distance: typeof poi.distance === 'number'
+              ? poi.distance
+              : (center && poi.location)
+                ? haversineDistance(center.lng, center.lat, poi.location.lng, poi.location.lat)
+                : undefined,
+          }))
+        : [];
+
+      // Deduplicate by name
+      const localNames = new Set(localResults.map(l => l.name.toLowerCase()));
+      const filtered = amapPois.filter(p => !localNames.has(p.name.toLowerCase()));
+
+      const merged = [...localResults, ...filtered];
+      merged.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+      callback(merged.slice(0, 20));
+    };
+
+    if (center) {
+      const zoom = mapInstanceRef.current.getZoom();
+      const radius = getSearchRadius(zoom);
+      placeSearchRef.current.searchNearBy(keyword, new AMap.LngLat(center.lng, center.lat), radius, searchCallback);
+    } else {
+      placeSearchRef.current.search(keyword, searchCallback);
+    }
+  }, [searchLocalShops]);
+
+  const handleCitySelect = useCallback((city: string, center: [number, number]) => {
+    setCityMode('manual');
+    setCurrentCity(city);
+    setShowCityPicker(false);
+    mapInstanceRef.current?.setZoomAndCenter(12, center, false, 500);
+    localStorage.setItem('map_city', JSON.stringify({ mode: 'manual', city }));
+  }, []);
+
+  const handleAutoMode = useCallback(() => {
+    setCityMode('auto');
+    setShowCityPicker(false);
+    localStorage.setItem('map_city', JSON.stringify({ mode: 'auto', city: '' }));
+    const center = mapInstanceRef.current?.getCenter();
+    if (center && geocoderRef.current) {
+      geocoderRef.current.getAddress([center.lng, center.lat], (status: string, result: any) => {
+        if (status === 'complete' && result?.regeocode?.addressComponent) {
+          const { city, province } = result.regeocode.addressComponent;
+          const cityName = (city || province || '').replace(/市$/, '');
+          setCurrentCity(cityName);
+          lastGeocodeCenterRef.current = { lng: center.lng, lat: center.lat };
+        }
+      });
+    }
   }, []);
 
   // Show action menu at a POI position after map finishes moving
@@ -297,12 +384,23 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     }
   }, [showPoiActionMenu]);
 
-  // Handle POI selection from search dropdown → show action menu
+  // Handle POI selection from search dropdown
   const handlePoiSelect = useCallback((poi: PoiResult) => {
     if (!mapInstanceRef.current || !poi.lng || !poi.lat) return;
-    showPoiActionMenu(poi);
     setShowSearch(false);
-  }, [showPoiActionMenu]);
+
+    // Local shop → select directly
+    if (poi.isLocalShop && poi.shopId) {
+      const shop = shops.find(s => s.id === poi.shopId);
+      if (shop) {
+        mapInstanceRef.current.setZoomAndCenter(16, [poi.lng, poi.lat], false, 300);
+        onShopSelect?.(shop);
+        return;
+      }
+    }
+
+    showPoiActionMenu(poi);
+  }, [showPoiActionMenu, shops, onShopSelect]);
 
   // Clean up POI markers when search closes
   const handleCloseSearch = useCallback(() => {
@@ -327,7 +425,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       .slice(0, 5);
   }, [actionMenu, shops]);
 
-  // Wrapper for search that also updates markers
+  // Search wrapper with map markers
   const handleSearchWithMarkers = useCallback((keyword: string, callback: (results: PoiResult[]) => void) => {
     handleSearch(keyword, (results) => {
       updatePoiMarkers(results);
@@ -418,6 +516,41 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     const t = setTimeout(() => setLocateError(''), 3000);
     return () => clearTimeout(t);
   }, [locateError]);
+
+  // AUTO city detection — geocode map center on moveend
+  useEffect(() => {
+    if (!mapLoaded || cityMode !== 'auto') return;
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const handler = () => {
+      const center = map.getCenter();
+      if (!center) return;
+      const last = lastGeocodeCenterRef.current;
+      if (last && haversineDistance(last.lng, last.lat, center.lng, center.lat) < 5000) return;
+      if (!geocoderRef.current) return;
+
+      geocoderRef.current.getAddress([center.lng, center.lat], (status: string, result: any) => {
+        if (status === 'complete' && result?.regeocode?.addressComponent) {
+          const { city, province } = result.regeocode.addressComponent;
+          const cityName = (city || province || '').replace(/市$/, '');
+          setCurrentCity(cityName);
+          lastGeocodeCenterRef.current = { lng: center.lng, lat: center.lat };
+        }
+      });
+    };
+
+    map.on('moveend', handler);
+    handler();
+    return () => { map.off('moveend', handler); };
+  }, [mapLoaded, cityMode]);
+
+  // Update PlaceSearch city when city changes
+  useEffect(() => {
+    if (!placeSearchRef.current) return;
+    placeSearchRef.current.setCity(currentCity || '全国');
+    placeSearchRef.current.setCityLimit(!!currentCity);
+  }, [currentCity]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -544,11 +677,23 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
         } catch (_e) {}
       });
 
+      // Restore saved city mode
+      try {
+        const savedCity = localStorage.getItem('map_city');
+        if (savedCity) {
+          const parsed = JSON.parse(savedCity);
+          if (parsed.mode === 'manual' && parsed.city) {
+            setCityMode('manual');
+            setCurrentCity(parsed.city);
+          }
+        }
+      } catch (_e) {}
+
       // Initialize plugins
-      AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
+      AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch', 'AMap.DistrictSearch'], () => {
         geocoderRef.current = new AMap.Geocoder();
         placeSearchRef.current = new AMap.PlaceSearch({
-          pageSize: 10,
+          pageSize: 20,
           extensions: 'all',
         });
       });
@@ -706,6 +851,13 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
         onSearch={handleSearchWithMarkers}
         onPoiSelect={handlePoiSelect}
         onClose={handleCloseSearch}
+        currentCity={currentCity}
+        isAutoCity={cityMode === 'auto'}
+        showCityPicker={showCityPicker}
+        onToggleCityPicker={() => setShowCityPicker(v => !v)}
+        onCitySelect={handleCitySelect}
+        onAutoMode={handleAutoMode}
+        onCloseCityPicker={() => setShowCityPicker(false)}
       />
 
       {/* Locate me button */}
