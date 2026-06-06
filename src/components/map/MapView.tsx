@@ -36,11 +36,21 @@ function buildShopInfoHtml(shop: MergedShop): string {
 
   // Rating
   if (shop.reviewCount > 0) {
-    const fullStars = Math.round(shop.avgRating ?? 0);
-    const stars = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars);
-    const ratingText = `${shop.avgRating?.toFixed(1)} · ${shop.reviewCount}条点评`;
+    const r = shop.avgRating ?? 0;
+    let starsHtml = '';
+    for (let i = 1; i <= 5; i++) {
+      if (r >= i) {
+        starsHtml += '<span style="color:#f59e0b">★</span>';
+      } else if (r > i - 1) {
+        const pct = Math.round((i - r) * 100);
+        starsHtml += `<span style="position:relative;display:inline-block"><span style="color:#d1d5db">★</span><span style="position:absolute;top:0;left:0;color:#f59e0b;clip-path:inset(0 ${pct}% 0 0)">★</span></span>`;
+      } else {
+        starsHtml += '<span style="color:#d1d5db">★</span>';
+      }
+    }
+    const ratingText = `${r.toFixed(1)} · ${shop.reviewCount}条点评`;
     const priceText = shop.avgPrice != null ? ` · 人均¥${Math.round(shop.avgPrice)}` : '';
-    parts.push(`<div style="margin-top:6px;display:flex;align-items:center;gap:6px"><span style="color:#f59e0b;font-size:13px;letter-spacing:1px">${stars}</span><span style="font-size:11px;color:#9ca3af">${ratingText}${priceText}</span></div>`);
+    parts.push(`<div style="margin-top:6px;display:flex;align-items:center;gap:6px"><span style="font-size:13px;letter-spacing:1px">${starsHtml}</span><span style="font-size:11px;color:#9ca3af">${ratingText}${priceText}</span></div>`);
   }
 
   // Address
@@ -233,7 +243,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       }));
   }, [shops]);
 
-  // Unified search: searchNearBy with local shops merged
+  // Unified search: keyword → city-wide search(), empty → searchNearBy()
   const handleSearch = useCallback((keyword: string, callback: (results: PoiResult[]) => void) => {
     const center = mapInstanceRef.current?.getCenter();
     const localResults = searchLocalShops(keyword, center);
@@ -272,12 +282,16 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       callback(merged.slice(0, 20));
     };
 
-    if (center) {
+    if (keyword.trim()) {
+      // Keyword search: city-wide (setCity already scoping), always finds matches
+      placeSearchRef.current.search(keyword, searchCallback);
+    } else if (center) {
+      // Empty keyword: browse nearby POIs around map center
       const zoom = mapInstanceRef.current.getZoom();
       const radius = getSearchRadius(zoom);
-      placeSearchRef.current.searchNearBy(keyword, new AMap.LngLat(center.lng, center.lat), radius, searchCallback);
+      placeSearchRef.current.searchNearBy('', new AMap.LngLat(center.lng, center.lat), radius, searchCallback);
     } else {
-      placeSearchRef.current.search(keyword, searchCallback);
+      callback(localResults);
     }
   }, [searchLocalShops]);
 

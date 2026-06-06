@@ -42,7 +42,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};
-    if (rating < 1 || rating > 5) newErrors.rating = '评分必须在 1-5 之间';
+    if (rating < 0.5 || rating > 5) newErrors.rating = '评分必须在 0.5-5 之间';
     if (!content.trim()) newErrors.content = '点评内容不能为空';
     return newErrors;
   }
@@ -107,18 +107,30 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         <label className="block text-sm font-medium text-gray-700 mb-1">
           评分 <span className="text-red-500">*</span>
         </label>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <button
-              key={star}
-              type="button"
-              onClick={() => setRating(star)}
-              className={`text-2xl transition-colors ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`}
-            >
-              ★
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex">
+            {[1, 2, 3, 4, 5].map((i) => {
+              if (rating >= i) return <span key={i} className="text-2xl text-yellow-400">★</span>;
+              if (rating > i - 1) return (
+                <span key={i} className="relative inline-block text-2xl">
+                  <span className="text-gray-300">★</span>
+                  <span className="absolute top-0 left-0 text-yellow-400" style={{ clipPath: `inset(0 ${(i - rating) * 100}% 0 0)` }}>★</span>
+                </span>
+              );
+              return <span key={i} className="text-2xl text-gray-300">★</span>;
+            })}
+          </div>
+          <span className="text-lg font-semibold text-gray-700 tabular-nums">{rating.toFixed(1)}</span>
         </div>
+        <input
+          type="range"
+          min="1"
+          max="5"
+          step="0.1"
+          value={rating}
+          onChange={(e) => setRating(Number(e.target.value))}
+          className="w-full mt-1 accent-orange-500"
+        />
         {errors.rating && <p className="mt-1 text-xs text-red-600">{errors.rating}</p>}
       </div>
 

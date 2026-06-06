@@ -54,8 +54,18 @@ export default function ShopCard({ shop, onClick }: ShopCardProps) {
       {/* Rating row */}
       {shop.reviewCount > 0 && (
         <div className="mt-1.5 flex items-center gap-2 text-sm">
-          <span className="text-amber-500">
-            {'★'.repeat(Math.round(shop.avgRating ?? 0))}{'☆'.repeat(5 - Math.round(shop.avgRating ?? 0))}
+          <span className="text-amber-500 flex items-center">
+            {[1, 2, 3, 4, 5].map((i) => {
+              const r = shop.avgRating ?? 0;
+              if (r >= i) return <span key={i} className="text-amber-500">★</span>;
+              if (r > i - 1) return (
+                <span key={i} className="relative inline-block">
+                  <span className="text-gray-300">★</span>
+                  <span className="absolute top-0 left-0 text-amber-500" style={{ clipPath: `inset(0 ${(i - r) * 100}% 0 0)` }}>★</span>
+                </span>
+              );
+              return <span key={i} className="text-gray-300">★</span>;
+            })}
           </span>
           <span className="text-gray-400 text-xs">{shop.avgRating?.toFixed(1)}</span>
           <span className="text-gray-400 text-xs">({shop.reviewCount}条)</span>

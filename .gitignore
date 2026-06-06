@@ -47,6 +47,7 @@ CLAUDE.md
 PLAN.md
 SPEC.md
 opencode.json
+.claude/
 
 # test artifacts
 playwright-report/
@@ -54,3 +55,5 @@ test-results/
 
 # other
 .research/
+docs/
+graphify-out/

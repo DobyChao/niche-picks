@@ -221,7 +221,22 @@ export default function HomePage() {
   }, []);
 
   const renderStars = (rating: number) => {
-    return '★'.repeat(rating) + '☆'.repeat(5 - rating);
+    return (
+      <>
+        {[1, 2, 3, 4, 5].map((i) =>
+          rating >= i ? (
+            <span key={i} className="text-yellow-400">★</span>
+          ) : rating > i - 1 ? (
+            <span key={i} className="relative inline-block">
+              <span className="text-gray-300">★</span>
+              <span className="absolute top-0 left-0 text-yellow-400" style={{ clipPath: `inset(0 ${(i - rating) * 100}% 0 0)` }}>★</span>
+            </span>
+          ) : (
+            <span key={i} className="text-gray-300">★</span>
+          )
+        )}
+      </>
+    );
   };
 
   return (
@@ -470,7 +485,7 @@ export default function HomePage() {
                             className="bg-white border border-gray-100 rounded-lg p-3 hover:shadow-sm transition-shadow"
                           >
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-yellow-500 text-sm">{renderStars(displayReview.rating)}</span>
+                              <span className="text-sm">{renderStars(displayReview.rating)}</span>
                               <div className="flex items-center gap-2">
                                 {displayReview.avgPrice != null && (
                                   <span className="text-xs text-gray-500">¥{displayReview.avgPrice}/人</span>

@@ -17,3 +17,9 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Hide AMap branding that overlaps modals */
+.amap-logo,
+.amap-copyright {
+  display: none !important;
+}

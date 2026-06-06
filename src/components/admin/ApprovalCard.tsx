@@ -83,7 +83,17 @@ function ChangeDetail({ change }: { change: ChangeLogItem }) {
         ) : (
           <>
             {s.author && <p>作者：{s.author}</p>}
-            {s.rating != null && <p>评分：{'★'.repeat(s.rating)}{'☆'.repeat(5 - s.rating)}</p>}
+            {s.rating != null && <p className="flex items-center gap-1">评分：{[1, 2, 3, 4, 5].map((i) => {
+              const r = s.rating!;
+              if (r >= i) return <span key={i} className="text-yellow-400">★</span>;
+              if (r > i - 1) return (
+                <span key={i} className="relative inline-block">
+                  <span className="text-gray-300">★</span>
+                  <span className="absolute top-0 left-0 text-yellow-400" style={{ clipPath: `inset(0 ${(i - r) * 100}% 0 0)` }}>★</span>
+                </span>
+              );
+              return <span key={i} className="text-gray-300">★</span>;
+            })}<span className="text-sm text-gray-500 ml-1">{s.rating.toFixed(1)}</span></p>}
             {s.content && <p className="whitespace-pre-wrap">{s.content}</p>}
             {s.avgPrice != null && <p>人均：¥{s.avgPrice}</p>}
             {s.visitDate && <p>到访：{s.visitDate}</p>}
