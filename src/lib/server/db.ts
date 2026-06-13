@@ -68,6 +68,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reviews_shopId ON reviews(shopId);
   CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_syncs(status);
   CREATE INDEX IF NOT EXISTS idx_pending_token ON pending_syncs(userToken);
+
+  CREATE TABLE IF NOT EXISTS feedbacks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nickname TEXT DEFAULT '',
+    contact TEXT DEFAULT '',
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Migration: add remark column to user_tokens

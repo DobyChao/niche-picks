@@ -16,6 +16,14 @@ interface UserTokenRow {
   createdAt: string;
 }
 
+interface FeedbackRow {
+  id: number;
+  nickname: string;
+  contact: string;
+  content: string;
+  created_at: string;
+}
+
 export default function AdminPage() {
   const [token, setToken] = useState<string>('');
   const [tokenInput, setTokenInput] = useState<string>('');
@@ -30,6 +38,11 @@ export default function AdminPage() {
   const [tokenList, setTokenList] = useState<UserTokenRow[]>([]);
   const [loadingTokens, setLoadingTokens] = useState(false);
   const [deletingToken, setDeletingToken] = useState<string | null>(null);
+
+  // Feedback state
+  const [feedbackList, setFeedbackList] = useState<FeedbackRow[]>([]);
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(false);
+  const [deletingFeedback, setDeletingFeedback] = useState<number | null>(null);
 
   // Load token from localStorage on mount
   useEffect(() => {
@@ -78,13 +91,30 @@ export default function AdminPage() {
     }
   }, [token]);
 
+  // Fetch feedback list
+  const fetchFeedbacks = useCallback(async () => {
+    if (!token) return;
+    setLoadingFeedbacks(true);
+    try {
+      const res = await fetch(`/api/feedback?token=${encodeURIComponent(token)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setFeedbackList(data.feedbacks || []);
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingFeedbacks(false);
+    }
+  }, [token]);
+
   // Fetch on token change
   useEffect(() => {
     if (token) {
       fetchPending();
       fetchTokens();
+      fetchFeedbacks();
     }
-  }, [token, fetchPending, fetchTokens]);
+  }, [token, fetchPending, fetchTokens, fetchFeedbacks]);
 
   // Handle token submission
   const handleTokenSubmit = (e: React.FormEvent) => {
@@ -256,8 +286,19 @@ export default function AdminPage() {
 
       {/* Main grid — matches sync page layout */}
       <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)] lg:flex-1 lg:min-h-0 lg:overflow-hidden">
-        {/* Left: Token management */}
-        <div className="lg:overflow-y-auto">
+        {/* Mobile: Feedback card (shown before Token card) */}
+        <div className="lg:hidden">
+          <FeedbackCard
+            feedbackList={feedbackList}
+            loadingFeedbacks={loadingFeedbacks}
+            deletingFeedback={deletingFeedback}
+            formatDate={formatDate}
+            onDelete={handleDeleteFeedback}
+          />
+        </div>
+
+        {/* Left: Token management + Desktop feedback below */}
+        <div className="lg:overflow-y-auto flex flex-col gap-5">
           <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">邀请 Token 管理</h2>
@@ -340,6 +381,17 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Desktop: Feedback card below Token management */}
+          <div className="hidden lg:block">
+            <FeedbackCard
+              feedbackList={feedbackList}
+              loadingFeedbacks={loadingFeedbacks}
+              deletingFeedback={deletingFeedback}
+              formatDate={formatDate}
+              onDelete={handleDeleteFeedback}
+            />
           </div>
         </div>
 
@@ -432,4 +484,98 @@ export default function AdminPage() {
       setError(err.message);
     }
   }
+
+  // Delete feedback handler
+  async function handleDeleteFeedback(id: number) {
+    if (!confirm('确定要删除此反馈吗？')) return;
+    setDeletingFeedback(id);
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '删除失败');
+      setInviteMsg({ type: 'success', text: '反馈已删除' });
+      fetchFeedbacks();
+    } catch (err: any) {
+      setInviteMsg({ type: 'error', text: err.message || '删除失败' });
+    } finally {
+      setDeletingFeedback(null);
+    }
+  }
+}
+
+function FeedbackCard({
+  feedbackList,
+  loadingFeedbacks,
+  deletingFeedback,
+  formatDate,
+  onDelete,
+}: {
+  feedbackList: FeedbackRow[];
+  loadingFeedbacks: boolean;
+  deletingFeedback: number | null;
+  formatDate: (iso: string) => string;
+  onDelete: (id: number) => void;
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h2 className="text-base font-semibold text-gray-900">意见箱</h2>
+        <p className="mt-0.5 text-xs text-gray-500">用户提交的反馈与建议</p>
+      </div>
+      <div className="p-5">
+        {loadingFeedbacks ? (
+          <div className="flex items-center justify-center py-6">
+            <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
+            <span className="ml-2 text-gray-400 text-sm">加载中...</span>
+          </div>
+        ) : feedbackList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+            <p className="text-sm font-medium">暂无反馈</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {feedbackList.map((fb) => (
+              <div
+                key={fb.id}
+                className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {fb.nickname && (
+                        <span className="font-medium text-gray-700">{fb.nickname}</span>
+                      )}
+                      {fb.contact && (
+                        <span className="text-xs text-gray-400">{fb.contact}</span>
+                      )}
+                      <span className="text-xs text-gray-400">
+                        {formatDate(fb.created_at)}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-gray-600 whitespace-pre-wrap break-words">
+                      {fb.content}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onDelete(fb.id)}
+                    disabled={deletingFeedback === fb.id}
+                    className="shrink-0 px-2 py-1 bg-red-100 text-red-600 text-xs rounded-md hover:bg-red-200 disabled:opacity-50 transition-colors"
+                  >
+                    {deletingFeedback === fb.id ? '...' : '删除'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

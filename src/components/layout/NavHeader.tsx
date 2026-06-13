@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: '/identity', label: '身份' },
   { href: '/friends', label: '友链' },
   { href: '/admin', label: '管理' },
+  { href: '/feedback', label: '意见箱' },
 ];
 
 export default function NavHeader() {
