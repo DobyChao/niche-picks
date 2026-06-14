@@ -7,6 +7,7 @@ import ShopForm from '@/components/shop/ShopForm';
 import ReviewForm from '@/components/review/ReviewForm';
 import { useMergedShops, useMergedReviews, deleteShop, deleteReview, getOriginalShop, getOriginalReview } from '@/lib/db';
 import type { MergedShop, MergedReview, ServerShop, ServerReview } from '@/lib/types';
+import { autoPullIfReady } from '@/lib/sync/pull';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
@@ -34,6 +35,8 @@ export default function HomePage() {
   const [repickMode, setRepickMode] = useState(false);
   const [repickEditingShop, setRepickEditingShop] = useState<MergedShop | null>(null);
   const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullMessage, setPullMessage] = useState<string | null>(null);
 
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(420);
@@ -50,6 +53,35 @@ export default function HomePage() {
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
   }, []);
+
+  // Background auto-pull on mount — silently refreshes if identity is saved and throttle window has elapsed.
+  useEffect(() => {
+    autoPullIfReady();
+  }, []);
+
+  // Auto-dismiss pull toast after 3 seconds.
+  useEffect(() => {
+    if (!pullMessage) return;
+    const timer = setTimeout(() => setPullMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [pullMessage]);
+
+  const handleRefresh = useCallback(async () => {
+    if (isPulling) return;
+    setIsPulling(true);
+    try {
+      const result = await autoPullIfReady();
+      if (result.status === 'success') {
+        setPullMessage(`已刷新 ${result.shopCount} 店 ${result.reviewCount} 点评`);
+      } else if (result.status === 'skipped') {
+        setPullMessage(result.reason === 'no-identity' ? '未设置同步身份' : '刚刚同步过，请稍后再试');
+      } else {
+        setPullMessage(`同步失败：${result.error}`);
+      }
+    } finally {
+      setIsPulling(false);
+    }
+  }, [isPulling]);
 
   const SIDEBAR_MIN = 280;
   const SIDEBAR_MAX = 600;
@@ -317,11 +349,24 @@ export default function HomePage() {
             onPointerUp={handlePointerUp}
           >
             {/* Hide title on mobile when a shop is selected so the action cluster has room. */}
-            {(isDesktop || !selectedShop) && (
-              <h2 className="text-lg font-semibold text-gray-800 shrink-0">
-                店铺列表
-              </h2>
-            )}
+            <div className="flex items-center gap-1 min-w-0">
+              {(isDesktop || !selectedShop) && (
+                <h2 className="text-lg font-semibold text-gray-800 shrink-0">
+                  店铺列表
+                </h2>
+              )}
+              <button
+                onClick={handleRefresh}
+                disabled={isPulling}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:hover:bg-transparent"
+                title="刷新"
+                aria-label="刷新"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isPulling ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {selectedShop ? (
                 <>
@@ -576,6 +621,13 @@ export default function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
           </button>
+        )}
+
+        {/* Pull feedback toast */}
+        {pullMessage && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 px-3.5 py-2 bg-gray-800/90 text-white text-xs rounded-full shadow-lg whitespace-nowrap pointer-events-none">
+            {pullMessage}
+          </div>
         )}
       </div>
 

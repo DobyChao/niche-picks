@@ -8,6 +8,7 @@ import {
   saveSyncIdentity,
   validateSyncToken,
 } from '@/lib/sync/auth';
+import { autoPullIfReady } from '@/lib/sync/pull';
 
 export default function IdentityPage() {
   const [token, setToken] = useState('');
@@ -50,7 +51,25 @@ export default function IdentityPage() {
       setToken(nextToken);
       setAuthorName(nextAuthorName);
       setHasSavedIdentity(true);
-      setMessage({ type: 'success', text: '同步身份已验证并保存到本机。' });
+
+      const pullResult = await autoPullIfReady();
+      if (pullResult.status === 'success') {
+        const total = pullResult.shopCount + pullResult.reviewCount;
+        setMessage({
+          type: 'success',
+          text:
+            total > 0
+              ? `身份已保存，已自动拉取 ${pullResult.shopCount} 家店铺、${pullResult.reviewCount} 条点评。`
+              : '身份已保存，已自动拉取（云端暂无数据）。',
+        });
+      } else if (pullResult.status === 'error') {
+        setMessage({
+          type: 'error',
+          text: `身份已保存，但自动拉取失败: ${pullResult.error}`,
+        });
+      } else {
+        setMessage({ type: 'success', text: '同步身份已验证并保存到本机。' });
+      }
     } catch (error) {
       setMessage({
         type: 'error',

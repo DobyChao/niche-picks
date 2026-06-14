@@ -1,4 +1,10 @@
 import { db } from '@/lib/db';
+import { getSavedSyncIdentity } from '@/lib/sync/auth';
+
+export type AutoPullResult =
+  | { status: 'skipped'; reason: 'no-identity' | 'throttled' }
+  | { status: 'success'; shopCount: number; reviewCount: number }
+  | { status: 'error'; error: string };
 
 export async function pullRemoteData(userToken: string) {
   const res = await fetch(
@@ -58,4 +64,29 @@ export async function pullRemoteData(userToken: string) {
   });
 
   return { success: true, shopCount: shops.length, reviewCount: reviews.length };
+}
+
+export async function autoPullIfReady(): Promise<AutoPullResult> {
+  if (typeof window === 'undefined') {
+    return { status: 'skipped', reason: 'no-identity' };
+  }
+
+  const { token } = getSavedSyncIdentity();
+  if (!token) {
+    return { status: 'skipped', reason: 'no-identity' };
+  }
+
+  try {
+    const result = await pullRemoteData(token);
+    return {
+      status: 'success',
+      shopCount: result.shopCount,
+      reviewCount: result.reviewCount,
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : '未知错误',
+    };
+  }
 }
