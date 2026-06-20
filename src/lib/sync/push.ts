@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { validateSyncToken } from '@/lib/sync/auth';
+import { pullRemoteData } from '@/lib/sync/pull';
 import type { ChangeLogItem } from '@/lib/types';
 
 export async function pushLocalChanges(userToken: string, authorName: string) {
@@ -49,7 +50,7 @@ export async function pushLocalChanges(userToken: string, authorName: string) {
     throw new Error(err.error || `同步失败 (HTTP ${res.status})`);
   }
 
-  const { syncId } = await res.json();
+  const { syncId, autoApproved } = await res.json();
 
   await db.transaction('rw', [db.shopChanges, db.reviewChanges], async () => {
     for (const c of draftShopChanges) {
@@ -60,5 +61,9 @@ export async function pushLocalChanges(userToken: string, authorName: string) {
     }
   });
 
-  return { success: true, syncId, count: changes.length };
+  if (autoApproved) {
+    await pullRemoteData(userToken);
+  }
+
+  return { success: true, syncId, count: changes.length, autoApproved: !!autoApproved };
 }

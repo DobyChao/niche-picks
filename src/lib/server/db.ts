@@ -85,6 +85,13 @@ try {
   // Column already exists
 }
 
+// Migration: add role column to user_tokens (normal | trusted)
+try {
+  db.exec('ALTER TABLE user_tokens ADD COLUMN role TEXT DEFAULT "normal"');
+} catch {
+  // Column already exists
+}
+
 // Migration: add amapPoiId and photos columns to shops
 try {
   db.exec('ALTER TABLE shops ADD COLUMN amapPoiId TEXT DEFAULT ""');

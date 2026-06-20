@@ -80,3 +80,15 @@ export interface PendingSync {
   status: 'pending' | 'approved' | 'rejected';
   submittedAt: string;
 }
+
+// ─── 用户 Token 身份角色 ───
+
+export type UserTokenRole = 'normal' | 'trusted';
+
+export interface UserToken {
+  token: string;
+  nickname: string;
+  remark: string;
+  role: UserTokenRole;
+  createdAt: string;
+}

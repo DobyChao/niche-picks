@@ -45,8 +45,13 @@ export default function SyncPanel() {
     setMessage(null);
 
     try {
-      await pushLocalChanges(identity.token, identity.authorName);
-      showMessage('success', '推送成功！本地变更已上传到服务器。');
+      const result = await pushLocalChanges(identity.token, identity.authorName);
+      showMessage(
+        'success',
+        result.autoApproved
+          ? '推送成功！变更已自动审批并同步。'
+          : '推送成功！本地变更已上传，等待管理员审批。',
+      );
     } catch (err) {
       showMessage(
         'error',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
 import { authenticateUser } from '@/lib/server/auth';
+import { applyChangesToDb } from '@/lib/server/merge-changes';
 import type { ChangeLogItem } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -18,13 +19,19 @@ export async function POST(request: NextRequest) {
     }
 
     const syncId = `sync_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const submittedAt = new Date().toISOString();
+    const autoApprove = authResult.role === 'trusted';
 
     db.prepare(
       `INSERT INTO pending_syncs (syncId, userToken, authorName, changesPayload, status, submittedAt)
        VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(syncId, token, authorName, JSON.stringify(changes), 'pending', new Date().toISOString());
+    ).run(syncId, token, authorName, JSON.stringify(changes), autoApprove ? 'approved' : 'pending', submittedAt);
 
-    return NextResponse.json({ ok: true, syncId });
+    if (autoApprove && changes.length > 0) {
+      applyChangesToDb(changes);
+    }
+
+    return NextResponse.json({ ok: true, syncId, autoApproved: autoApprove });
   } catch (error) {
     console.error('[sync/push] error:', error);
     return NextResponse.json({ ok: false, error: '服务器错误' }, { status: 500 });

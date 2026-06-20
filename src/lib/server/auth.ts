@@ -1,4 +1,5 @@
 import { db } from './db';
+import type { UserTokenRole } from '@/lib/types';
 
 export function authenticateAdmin(token: string): { success: boolean; error?: string } {
   if (token === process.env.ADMIN_TOKEN) {
@@ -7,13 +8,19 @@ export function authenticateAdmin(token: string): { success: boolean; error?: st
   return { success: false, error: 'invalid_admin_token' };
 }
 
-export function authenticateUser(token: string): { success: boolean; nickname?: string; error?: string } {
+export function authenticateUser(token: string): {
+  success: boolean;
+  nickname?: string;
+  role?: UserTokenRole;
+  error?: string;
+} {
   const row = db.prepare('SELECT * FROM user_tokens WHERE token = ?').get(token) as
-    | { token: string; nickname: string; createdAt: string }
+    | { token: string; nickname: string; role?: string; createdAt: string }
     | undefined;
 
   if (row) {
-    return { success: true, nickname: row.nickname };
+    const role: UserTokenRole = row.role === 'trusted' ? 'trusted' : 'normal';
+    return { success: true, nickname: row.nickname, role };
   }
   return { success: false, error: 'invalid_user_token' };
 }

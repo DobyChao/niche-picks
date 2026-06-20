@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import ApprovalCard from '@/components/admin/ApprovalCard';
+import type { UserTokenRole } from '@/lib/types';
 
 interface PendingItem {
   syncId: string;
@@ -13,8 +14,14 @@ interface UserTokenRow {
   token: string;
   nickname: string;
   remark: string;
+  role: UserTokenRole;
   createdAt: string;
 }
+
+const ROLE_LABELS: Record<UserTokenRole, string> = {
+  normal: '普通',
+  trusted: '信任（自动审批）',
+};
 
 interface FeedbackRow {
   id: number;
@@ -38,6 +45,8 @@ export default function AdminPage() {
   const [tokenList, setTokenList] = useState<UserTokenRow[]>([]);
   const [loadingTokens, setLoadingTokens] = useState(false);
   const [deletingToken, setDeletingToken] = useState<string | null>(null);
+  const [updatingRoleToken, setUpdatingRoleToken] = useState<string | null>(null);
+  const [newTokenRole, setNewTokenRole] = useState<UserTokenRole>('normal');
 
   // Feedback state
   const [feedbackList, setFeedbackList] = useState<FeedbackRow[]>([]);
@@ -134,17 +143,38 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/generate-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, remark: remark.trim() }),
+        body: JSON.stringify({ token, remark: remark.trim(), role: newTokenRole }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '生成失败');
       setInviteMsg({ type: 'success', text: '邀请 Token 已生成' });
       setRemark('');
+      setNewTokenRole('normal');
       fetchTokens();
     } catch (err: any) {
       setInviteMsg({ type: 'error', text: err.message || '生成失败' });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Update token role
+  const handleUpdateRole = async (userToken: string, role: UserTokenRole) => {
+    setUpdatingRoleToken(userToken);
+    try {
+      const res = await fetch('/api/admin/generate-token', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, userToken, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '更新失败');
+      setInviteMsg({ type: 'success', text: `身份已更新为「${ROLE_LABELS[role]}」` });
+      fetchTokens();
+    } catch (err: any) {
+      setInviteMsg({ type: 'error', text: err.message || '更新失败' });
+    } finally {
+      setUpdatingRoleToken(null);
     }
   };
 
@@ -302,11 +332,11 @@ export default function AdminPage() {
           <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">邀请 Token 管理</h2>
-              <p className="mt-0.5 text-xs text-gray-500">生成和管理用户邀请令牌</p>
+              <p className="mt-0.5 text-xs text-gray-500">生成令牌并配置身份角色（信任身份可自动审批）</p>
             </div>
             <div className="p-5 space-y-4">
               {/* Generation area */}
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
                   value={remark}
@@ -316,6 +346,15 @@ export default function AdminPage() {
                              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                              placeholder-gray-400"
                 />
+                <select
+                  value={newTokenRole}
+                  onChange={(e) => setNewTokenRole(e.target.value as UserTokenRole)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white
+                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="normal">普通身份</option>
+                  <option value="trusted">信任身份（自动审批）</option>
+                </select>
                 <button
                   onClick={handleGenerateToken}
                   disabled={isGenerating}
@@ -347,9 +386,18 @@ export default function AdminPage() {
                           className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-gray-700 font-medium shrink-0 truncate max-w-[80px]" title={label}>
                                 {label}
+                              </span>
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                  row.role === 'trusted'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-gray-200 text-gray-600'
+                                }`}
+                              >
+                                {ROLE_LABELS[row.role || 'normal']}
                               </span>
                               <span className="text-gray-400 text-xs whitespace-nowrap">
                                 {formatDate(row.createdAt)}
@@ -359,7 +407,17 @@ export default function AdminPage() {
                               {row.token}
                             </code>
                           </div>
-                          <div className="flex gap-2 shrink-0">
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <select
+                              value={row.role || 'normal'}
+                              disabled={updatingRoleToken === row.token}
+                              onChange={(e) => handleUpdateRole(row.token, e.target.value as UserTokenRole)}
+                              className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white
+                                         disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="normal">普通</option>
+                              <option value="trusted">信任</option>
+                            </select>
                             <button
                               onClick={() => copyToClipboard(row.token)}
                               className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-md hover:bg-gray-300 transition-colors whitespace-nowrap"
