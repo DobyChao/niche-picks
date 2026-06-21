@@ -2,30 +2,40 @@
 
 import type { MergedShop, SyncBadge } from '@/lib/types';
 import { getCategoryColor } from '@/lib/utils';
+import Badge from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import StarRating from '@/components/ui/StarRating';
+import { cn } from '@/lib/cn';
 
 interface ShopCardProps {
   shop: MergedShop;
   onClick?: () => void;
+  selected?: boolean;
 }
 
 function getSyncBadge(badge: SyncBadge) {
   switch (badge) {
     case 'draft':
-      return { emoji: '🟢', label: '未提交', color: 'bg-yellow-100 text-yellow-700' };
+      return { label: '未提交', variant: 'warning' as const };
     case 'pending':
-      return { emoji: '🟡', label: '同步中', color: 'bg-orange-100 text-orange-700' };
+      return { label: '同步中', variant: 'default' as const };
     case 'synced':
-      return { emoji: '🔵', label: '已同步', color: 'bg-green-100 text-green-700' };
+      return { label: '已同步', variant: 'success' as const };
   }
 }
 
-export default function ShopCard({ shop, onClick }: ShopCardProps) {
+export default function ShopCard({ shop, onClick, selected }: ShopCardProps) {
   const syncBadge = getSyncBadge(shop._syncBadge);
   const catColor = getCategoryColor(shop.category);
 
   return (
-    <div
-      className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer p-4 border border-gray-100"
+    <Card
+      padding="md"
+      className={cn(
+        'transition-all duration-200',
+        onClick && 'cursor-pointer hover:shadow-[var(--shadow-elevated)] hover:border-primary/20',
+        selected && 'ring-2 ring-primary/30 border-primary/30',
+      )}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -36,9 +46,8 @@ export default function ShopCard({ shop, onClick }: ShopCardProps) {
         }
       }}
     >
-      {/* Header: Name + Category Badge */}
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-bold text-gray-900 text-base leading-tight truncate">
+        <h3 className="font-semibold text-foreground text-base leading-tight truncate font-serif">
           {shop.name}
         </h3>
         {shop.category && (
@@ -51,63 +60,37 @@ export default function ShopCard({ shop, onClick }: ShopCardProps) {
         )}
       </div>
 
-      {/* Rating row */}
       {shop.reviewCount > 0 && (
         <div className="mt-1.5 flex items-center gap-2 text-sm">
-          <span className="text-amber-500 flex items-center">
-            {[1, 2, 3, 4, 5].map((i) => {
-              const r = shop.avgRating ?? 0;
-              if (r >= i) return <span key={i} className="text-amber-500">★</span>;
-              if (r > i - 1) return (
-                <span key={i} className="relative inline-block">
-                  <span className="text-gray-300">★</span>
-                  <span className="absolute top-0 left-0 text-amber-500" style={{ clipPath: `inset(0 ${(i - r) * 100}% 0 0)` }}>★</span>
-                </span>
-              );
-              return <span key={i} className="text-gray-300">★</span>;
-            })}
-          </span>
-          <span className="text-gray-400 text-xs">{shop.avgRating?.toFixed(1)}</span>
-          <span className="text-gray-400 text-xs">({shop.reviewCount}条)</span>
+          <StarRating rating={shop.avgRating ?? 0} />
+          <span className="text-muted text-xs tabular-nums">{shop.avgRating?.toFixed(1)}</span>
+          <span className="text-muted text-xs">({shop.reviewCount}条)</span>
           {shop.avgPrice != null && (
-            <span className="text-gray-400 text-xs">人均¥{Math.round(shop.avgPrice)}</span>
+            <span className="text-muted text-xs">人均¥{Math.round(shop.avgPrice)}</span>
           )}
         </div>
       )}
 
-      {/* Address */}
       {shop.address && (
-        <p className="mt-1.5 text-sm text-gray-500 truncate" title={shop.address}>
-          📍 {shop.address}
+        <p className="mt-1.5 text-sm text-muted truncate" title={shop.address}>
+          {shop.address}
         </p>
       )}
 
-      {/* Tags */}
       {shop.tags && shop.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {shop.tags.map((tag, index) => (
-            <span
-              key={index}
-              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700"
-            >
+            <Badge key={index} variant="muted">
               {tag}
-            </span>
+            </Badge>
           ))}
         </div>
       )}
 
-      {/* Footer: Sync Status + Phone */}
       <div className="mt-3 flex items-center justify-between">
-        <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${syncBadge.color}`}
-        >
-          <span>{syncBadge.emoji}</span>
-          {syncBadge.label}
-        </span>
-        {shop.phone && (
-          <span className="text-xs text-gray-400">📞 {shop.phone}</span>
-        )}
+        <Badge variant={syncBadge.variant}>{syncBadge.label}</Badge>
+        {shop.phone && <span className="text-xs text-muted">{shop.phone}</span>}
       </div>
-    </div>
+    </Card>
   );
 }

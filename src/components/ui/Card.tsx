@@ -1,6 +1,6 @@
 import { cn } from '@/lib/cn';
 
-interface CardProps {
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
@@ -13,7 +13,7 @@ const paddingClasses = {
   lg: 'p-5',
 };
 
-export function Card({ children, className, padding = 'none' }: CardProps) {
+export function Card({ children, className, padding = 'none', ...props }: CardProps) {
   return (
     <div
       className={cn(
@@ -22,6 +22,7 @@ export function Card({ children, className, padding = 'none' }: CardProps) {
         paddingClasses[padding],
         className,
       )}
+      {...props}
     >
       {children}
     </div>
