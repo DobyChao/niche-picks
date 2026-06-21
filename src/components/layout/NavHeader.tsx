@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/cn';
 
 const NAV_LINKS = [
   { href: '/', label: '首页' },
@@ -19,34 +20,36 @@ export default function NavHeader() {
 
   const close = useCallback(() => setMenuOpen(false), []);
 
+  const linkClass = (href: string, block = false) =>
+    cn(
+      'text-sm font-medium transition-colors',
+      block ? 'block px-3 py-2' : 'whitespace-nowrap px-3 py-1.5 rounded-[var(--radius-button)]',
+      pathname === href
+        ? 'text-primary bg-primary-muted'
+        : 'text-muted hover:text-primary hover:bg-primary-muted/60',
+    );
+
   return (
-    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200">
+    <header className="sticky top-0 z-40 bg-surface/85 backdrop-blur-md border-b border-border">
       <nav className="flex items-center justify-between max-w-7xl mx-auto px-4 h-14">
-        <Link href="/" className="shrink-0 text-lg font-bold text-gray-900 tracking-tight hover:text-blue-600 transition-colors">
+        <Link
+          href="/"
+          className="shrink-0 text-lg font-bold text-foreground tracking-tight font-serif hover:text-primary transition-colors"
+        >
           小众点评
         </Link>
 
-        {/* Desktop horizontal links */}
         <div className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`whitespace-nowrap px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                pathname === href
-                  ? 'text-blue-600 bg-blue-50'
-                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-              }`}
-            >
+            <Link key={href} href={href} className={linkClass(href)}>
               {label}
             </Link>
           ))}
         </div>
 
-        {/* Mobile hamburger button */}
         <button
-          onClick={() => setMenuOpen(v => !v)}
-          className="md:hidden p-2 rounded-md text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="md:hidden p-2 rounded-[var(--radius-button)] text-muted hover:text-primary hover:bg-primary-muted/60 transition-colors"
           aria-label={menuOpen ? '关闭菜单' : '打开菜单'}
         >
           {menuOpen ? (
@@ -61,22 +64,12 @@ export default function NavHeader() {
         </button>
       </nav>
 
-      {/* Mobile dropdown menu */}
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-40 md:hidden" onClick={close} />
-          <nav className="absolute top-full right-2 mt-1 z-50 md:hidden w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1">
+          <nav className="absolute top-full right-2 mt-1 z-50 md:hidden w-36 bg-surface rounded-[var(--radius-card)] shadow-[var(--shadow-elevated)] border border-border py-1">
             {NAV_LINKS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={close}
-                className={`block px-3 py-2 text-sm font-medium transition-colors ${
-                  pathname === href
-                    ? 'text-blue-600 bg-blue-50'
-                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                }`}
-              >
+              <Link key={href} href={href} onClick={close} className={linkClass(href, true)}>
                 {label}
               </Link>
             ))}
