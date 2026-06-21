@@ -13,6 +13,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import StarRating from '@/components/ui/StarRating';
+import Modal from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
@@ -622,33 +623,36 @@ export default function HomePage() {
 
       {/* ShopForm modal */}
       {showShopForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-800">
-                {editingShop ? '编辑店铺' : '新增店铺'}
-              </h3>
-              <button
-                onClick={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
-                className="p-1 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
-                aria-label="关闭"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-6">
-              <ShopForm
-                shop={editingShop}
-                prefilledData={prefilledFormData}
-                onSubmit={handleShopSaved}
-                onCancel={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
-                onRepickLocation={editingShop ? handleRepickLocation : undefined}
-              />
-            </div>
+        <Modal
+          open={showShopForm}
+          onClose={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+          maxWidth="lg"
+          className="max-h-[90vh] overflow-y-auto"
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-surface z-10">
+            <h3 className="text-lg font-semibold text-foreground">
+              {editingShop ? '编辑店铺' : '新增店铺'}
+            </h3>
+            <button
+              onClick={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+              className="p-1 rounded-full hover:bg-primary-muted/50 transition-colors text-muted"
+              aria-label="关闭"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-        </div>
+          <div className="p-6">
+            <ShopForm
+              shop={editingShop}
+              prefilledData={prefilledFormData}
+              onSubmit={handleShopSaved}
+              onCancel={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+              onRepickLocation={editingShop ? handleRepickLocation : undefined}
+            />
+          </div>
+        </Modal>
       )}
 
       <ConfirmDialog

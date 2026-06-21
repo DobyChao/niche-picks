@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { addShop, updateShop } from '@/lib/db';
 import type { MergedShop } from '@/lib/types';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Toast from '@/components/ui/Toast';
+import { cn } from '@/lib/cn';
 
 interface PrefilledData {
   lng: number;
@@ -55,7 +59,6 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Suggestion state
   const [suggestions, setSuggestions] = useState<PoiSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -63,7 +66,6 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Load AMap plugin
   useEffect(() => {
     const AMap = (window as any).AMap;
     if (!AMap) return;
@@ -90,31 +92,18 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
     if (prefilledData) {
       setLng(prefilledData.lng.toFixed(6));
       setLat(prefilledData.lat.toFixed(6));
-      if (prefilledData.address) {
-        setAddress(prefilledData.address);
-      }
+      if (prefilledData.address) setAddress(prefilledData.address);
       if (!shop) {
-        if (prefilledData.name) {
-          setName(prefilledData.name);
-        }
-        if (prefilledData.category) {
-          setCategory(prefilledData.category);
-        }
-        if (prefilledData.phone) {
-          setPhone(prefilledData.phone);
-        }
-        if (prefilledData.amapPoiId) {
-          setAmapPoiId(prefilledData.amapPoiId);
-        }
-      } else {
-        if (prefilledData.amapPoiId) {
-          setAmapPoiId(prefilledData.amapPoiId);
-        }
+        if (prefilledData.name) setName(prefilledData.name);
+        if (prefilledData.category) setCategory(prefilledData.category);
+        if (prefilledData.phone) setPhone(prefilledData.phone);
+        if (prefilledData.amapPoiId) setAmapPoiId(prefilledData.amapPoiId);
+      } else if (prefilledData.amapPoiId) {
+        setAmapPoiId(prefilledData.amapPoiId);
       }
     }
   }, [prefilledData, shop]);
 
-  // Close suggestions on click outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -159,9 +148,7 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
   const handleNameFocus = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSuggestLoading(true);
-    debounceRef.current = setTimeout(() => {
-      fetchSuggestions(name);
-    }, name.trim() ? 1000 : 300);
+    debounceRef.current = setTimeout(() => fetchSuggestions(name), name.trim() ? 1000 : 300);
   }, [name, fetchSuggestions]);
 
   const handleNameChange = useCallback((value: string) => {
@@ -169,14 +156,11 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     if (!value.trim()) {
-      // Cleared input → show nearby if coords exist
       const lngNum = Number(lng);
       const latNum = Number(lat);
       if (!isNaN(lngNum) && !isNaN(latNum) && lngNum !== 0) {
         setSuggestLoading(true);
-        debounceRef.current = setTimeout(() => {
-          fetchSuggestions('');
-        }, 1000);
+        debounceRef.current = setTimeout(() => fetchSuggestions(''), 1000);
       } else {
         setSuggestions([]);
         setShowSuggestions(false);
@@ -185,9 +169,7 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
     }
 
     setSuggestLoading(true);
-    debounceRef.current = setTimeout(() => {
-      fetchSuggestions(value);
-    }, 1000);
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 1000);
   }, [lng, lat, fetchSuggestions]);
 
   const handleSelectSuggestion = useCallback((poi: PoiSuggestion) => {
@@ -226,11 +208,7 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
     setIsSubmitting(true);
 
     try {
-      const tags = tagsInput
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-
+      const tags = tagsInput.split(/[,，]/).map((t) => t.trim()).filter((t) => t.length > 0);
       const shopData = {
         name: name.trim(),
         address: address.trim() || undefined,
@@ -249,18 +227,13 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
         await updateShop(shop.id, shopData);
         setSuccessMessage('店铺信息已更新');
       } else {
-        await addShop({
-          ...shopData,
-          createdAt: new Date().toISOString(),
-        } as any);
+        await addShop({ ...shopData, createdAt: new Date().toISOString() } as any);
         setSuccessMessage('店铺已创建');
       }
 
       onSubmit?.();
     } catch (err) {
-      setErrors({
-        general: `保存失败: ${err instanceof Error ? err.message : '未知错误'}`,
-      });
+      setErrors({ general: `保存失败: ${err instanceof Error ? err.message : '未知错误'}` });
     } finally {
       setIsSubmitting(false);
     }
@@ -268,21 +241,11 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {successMessage && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-          ✓ {successMessage}
-        </div>
-      )}
+      {successMessage && <Toast variant="success">✓ {successMessage}</Toast>}
+      {errors.general && <Toast variant="error">✕ {errors.general}</Toast>}
 
-      {errors.general && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          ✕ {errors.general}
-        </div>
-      )}
-
-      {/* Shop name with suggestions */}
       <div ref={wrapperRef} className="relative">
-        <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="shop-name" className="block text-sm font-medium text-foreground mb-1">
           店铺名称 <span className="text-red-500">*</span>
         </label>
         <input
@@ -293,19 +256,20 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
           onFocus={handleNameFocus}
           placeholder="输入店铺名称"
           autoComplete="off"
-          className={`w-full px-3 py-2 border rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400
-                     ${errors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+          className={cn(
+            'w-full px-3 py-2 bg-surface border rounded-[var(--radius-button)] text-sm text-foreground',
+            'placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50',
+            errors.name ? 'border-red-400 bg-red-50/50' : 'border-border',
+          )}
         />
         {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
 
         {showSuggestions && (suggestLoading || suggestions.length > 0) && (
-          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-surface border border-border rounded-[var(--radius-card)] shadow-[var(--shadow-elevated)] max-h-[200px] overflow-y-auto">
             {suggestLoading && suggestions.length === 0 && (
               <div className="flex items-center justify-center py-4">
-                <span className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
-                <span className="ml-2 text-xs text-gray-400">搜索中...</span>
+                <span className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                <span className="ml-2 text-xs text-muted">搜索中...</span>
               </div>
             )}
             {suggestions.map((poi, i) => (
@@ -313,160 +277,45 @@ export default function ShopForm({ shop, prefilledData, onSubmit, onCancel, onRe
                 key={poi.amapPoiId ?? i}
                 type="button"
                 onClick={() => handleSelectSuggestion(poi)}
-                className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-b-0"
+                className="w-full text-left px-3 py-2 hover:bg-primary-muted/60 transition-colors border-b border-border/50 last:border-b-0"
               >
-                <div className="text-sm font-medium text-gray-800 truncate">{poi.name}</div>
-                <div className="text-xs text-gray-400 truncate mt-0.5">{poi.address}</div>
+                <div className="text-sm font-medium text-foreground truncate">{poi.name}</div>
+                <div className="text-xs text-muted truncate mt-0.5">{poi.address}</div>
               </button>
             ))}
           </div>
         )}
       </div>
 
-      <div>
-        <label htmlFor="shop-address" className="block text-sm font-medium text-gray-700 mb-1">地址</label>
-        <input
-          id="shop-address"
-          type="text"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="输入店铺地址"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="shop-category" className="block text-sm font-medium text-gray-700 mb-1">分类</label>
-        <input
-          id="shop-category"
-          type="text"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="如：餐厅、咖啡厅、书店"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="shop-phone" className="block text-sm font-medium text-gray-700 mb-1">电话</label>
-        <input
-          id="shop-phone"
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="联系电话"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="shop-hours" className="block text-sm font-medium text-gray-700 mb-1">营业时间</label>
-        <input
-          id="shop-hours"
-          type="text"
-          value={businessHours}
-          onChange={(e) => setBusinessHours(e.target.value)}
-          placeholder="如：09:00-22:00"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="shop-tags" className="block text-sm font-medium text-gray-700 mb-1">标签</label>
-        <input
-          id="shop-tags"
-          type="text"
-          value={tagsInput}
-          onChange={(e) => setTagsInput(e.target.value)}
-          placeholder="用逗号分隔，如：安静, 适合工作, WiFi"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-        <p className="mt-1 text-xs text-gray-400">多个标签用逗号分隔</p>
-      </div>
+      <Input id="shop-address" label="地址" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="输入店铺地址" />
+      <Input id="shop-category" label="分类" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="如：餐厅、咖啡厅、书店" />
+      <Input id="shop-phone" label="电话" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" />
+      <Input id="shop-hours" label="营业时间" value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} placeholder="如：09:00-22:00" />
+      <Input id="shop-tags" label="标签" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="用逗号分隔，如：安静, 适合工作, WiFi" hint="多个标签用逗号分隔" />
 
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label htmlFor="shop-lng" className="block text-sm font-medium text-gray-700 mb-1">经度 (lng)</label>
-          <input
-            id="shop-lng"
-            type="number"
-            step="any"
-            value={lng}
-            onChange={(e) => setLng(e.target.value)}
-            placeholder="116.397"
-            className={`w-full px-3 py-2 border rounded-lg text-sm
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       placeholder-gray-400
-                       ${errors.lng ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-          />
-          {errors.lng && <p className="mt-1 text-xs text-red-600">{errors.lng}</p>}
-        </div>
-        <div>
-          <label htmlFor="shop-lat" className="block text-sm font-medium text-gray-700 mb-1">纬度 (lat)</label>
-          <input
-            id="shop-lat"
-            type="number"
-            step="any"
-            value={lat}
-            onChange={(e) => setLat(e.target.value)}
-            placeholder="39.909"
-            className={`w-full px-3 py-2 border rounded-lg text-sm
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       placeholder-gray-400
-                       ${errors.lat ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-          />
-          {errors.lat && <p className="mt-1 text-xs text-red-600">{errors.lat}</p>}
-        </div>
+        <Input id="shop-lng" label="经度 (lng)" type="number" step="any" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="116.397" error={errors.lng} />
+        <Input id="shop-lat" label="纬度 (lat)" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="39.909" error={errors.lat} />
       </div>
 
       {isEditing && onRepickLocation && (
-        <button
-          type="button"
-          onClick={onRepickLocation}
-          className="col-span-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={onRepickLocation} className="text-primary">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           从地图重新选取位置
-        </button>
+        </Button>
       )}
 
       <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="flex-1 py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg
-                     hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors duration-200 text-sm"
-        >
-          {isSubmitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-              保存中...
-            </span>
-          ) : isEditing ? '更新店铺' : '添加店铺'}
-        </button>
+        <Button type="submit" disabled={isSubmitting} className="flex-1">
+          {isSubmitting ? '保存中...' : isEditing ? '更新店铺' : '添加店铺'}
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel}>
             取消
-          </button>
+          </Button>
         )}
       </div>
     </form>
