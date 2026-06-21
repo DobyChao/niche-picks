@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Noto_Sans_SC, Noto_Serif_SC } from "next/font/google";
+import { Noto_Sans_SC } from "next/font/google";
 import NavHeader from "@/components/layout/NavHeader";
 import "./globals.css";
 
@@ -7,12 +7,7 @@ const notoSans = Noto_Sans_SC({
   variable: "--font-noto-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-});
-
-const notoSerif = Noto_Serif_SC({
-  variable: "--font-noto-serif",
-  subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -26,11 +21,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="zh-CN"
-      className={`${notoSans.variable} ${notoSerif.variable} h-full antialiased`}
-    >
-      <body className="h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
+    <html lang="zh-CN" className={`${notoSans.variable} h-full antialiased`}>
+      <body className="h-full flex flex-col bg-background text-foreground font-sans" suppressHydrationWarning>
         <NavHeader />
         <main className="flex-1 flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">{children}</main>
       </body>

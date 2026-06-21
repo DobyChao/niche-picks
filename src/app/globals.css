@@ -34,17 +34,14 @@
   --color-warning: var(--color-warning);
   --color-warning-muted: var(--color-warning-muted);
   --font-sans: var(--font-noto-sans);
-  --font-serif: var(--font-noto-serif);
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: var(--font-noto-sans), "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-
-.font-serif {
-  font-family: var(--font-noto-serif), "Songti SC", "SimSun", serif;
+  font-family: "PingFang SC", "Hiragino Sans GB", var(--font-noto-sans), "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Hide AMap branding that overlaps modals */

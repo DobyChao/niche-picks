@@ -47,7 +47,7 @@ export default function ShopCard({ shop, onClick, selected }: ShopCardProps) {
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-foreground text-base leading-tight truncate font-serif">
+        <h3 className="font-semibold text-foreground text-base leading-snug truncate">
           {shop.name}
         </h3>
         {shop.category && (

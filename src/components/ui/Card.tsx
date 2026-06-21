@@ -40,7 +40,7 @@ export function CardHeader({ title, description, action, className }: CardHeader
   return (
     <div className={cn('px-5 py-4 border-b border-border flex items-start justify-between gap-3', className)}>
       <div className="min-w-0">
-        <h2 className="text-base font-semibold text-foreground font-serif">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
       </div>
       {action}

@@ -64,7 +64,7 @@ interface ModalHeaderProps {
 export function ModalHeader({ title, description }: ModalHeaderProps) {
   return (
     <div className="px-6 py-5 border-b border-border">
-      <h3 className="text-lg font-semibold text-foreground font-serif">{title}</h3>
+      <h3 className="text-lg font-semibold text-foreground">{title}</h3>
       {description && <p className="mt-2 text-sm text-muted leading-relaxed">{description}</p>}
     </div>
   );

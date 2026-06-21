@@ -21,7 +21,7 @@ export default function PageHeader({
   return (
     <div className={cn('pt-1 flex-shrink-0 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between', className)}>
       <div>
-        <h1 className="text-2xl font-bold text-foreground font-serif tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted">{description}</p>}
       </div>
       <div className="flex items-center gap-4">

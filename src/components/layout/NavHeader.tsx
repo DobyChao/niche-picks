@@ -34,7 +34,7 @@ export default function NavHeader() {
       <nav className="flex items-center justify-between max-w-7xl mx-auto px-4 h-14">
         <Link
           href="/"
-          className="shrink-0 text-lg font-bold text-foreground tracking-tight font-serif hover:text-primary transition-colors"
+          className="shrink-0 text-lg font-bold text-foreground tracking-tight hover:text-primary transition-colors"
         >
           小众点评
         </Link>

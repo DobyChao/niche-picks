@@ -341,7 +341,7 @@ export default function HomePage() {
             {/* Hide title on mobile when a shop is selected so the action cluster has room. */}
             <div className="flex items-center gap-1 min-w-0">
               {(isDesktop || !selectedShop) && (
-                <h2 className="text-lg font-semibold text-foreground shrink-0 font-serif">
+                <h2 className="text-lg font-semibold text-foreground shrink-0">
                   店铺列表
                 </h2>
               )}
@@ -404,7 +404,7 @@ export default function HomePage() {
               <div className="p-4 space-y-4">
                 {/* Shop name (title) + rating summary */}
                 <div>
-                  <h1 className="text-xl font-bold text-foreground break-words leading-tight font-serif">
+                  <h1 className="text-xl font-bold text-foreground break-words leading-snug">
                     {selectedShop.name}
                   </h1>
                   {selectedShop.reviewCount > 0 && (
@@ -473,7 +473,7 @@ export default function HomePage() {
                 {/* Reviews Section */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-foreground font-serif">
+                    <h3 className="text-sm font-semibold text-foreground">
                       点评 ({shopReviews?.length ?? 0})
                     </h3>
                     <Button size="sm" onClick={handleAddReview}>
