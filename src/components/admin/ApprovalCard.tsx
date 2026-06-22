@@ -1,6 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
+import StarRating from '@/components/ui/StarRating';
+import { cn } from '@/lib/cn';
 
 interface ChangeLogItem {
   entity: 'shop' | 'review';
@@ -25,23 +30,22 @@ interface ApprovalCardProps {
 
 function formatTimestamp(ts: number): string {
   try {
-    const date = new Date(ts);
-    return date.toLocaleString('zh-CN', {
+    return new Date(ts).toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
     });
-  } catch (_e) {
+  } catch {
     return String(ts);
   }
 }
 
-const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-  create: { label: '新建', color: 'bg-green-50 text-green-700 border-green-200' },
-  update: { label: '修改', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  delete: { label: '删除', color: 'bg-red-50 text-red-700 border-red-200' },
+const ACTION_LABELS: Record<string, { label: string; variant: 'success' | 'default' | 'warning' }> = {
+  create: { label: '新建', variant: 'success' },
+  update: { label: '修改', variant: 'default' },
+  delete: { label: '删除', variant: 'warning' },
 };
 
 function ChangeDetail({ change }: { change: ChangeLogItem }) {
@@ -49,20 +53,16 @@ function ChangeDetail({ change }: { change: ChangeLogItem }) {
   const actionConfig = ACTION_LABELS[change.action] || ACTION_LABELS.update;
 
   return (
-    <div className="py-2.5 px-3 bg-gray-50 rounded-lg text-sm">
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-xs text-gray-500">
-          {change.entity === 'shop' ? '店铺' : '点评'}
-        </span>
-        <span className={`shrink-0 px-1.5 py-0.5 rounded border text-[11px] font-medium ${actionConfig.color}`}>
-          {actionConfig.label}
-        </span>
-        <span className="text-gray-800 font-medium truncate">
+    <div className="py-2.5 px-3 bg-background rounded-[var(--radius-button)] text-sm border border-border/50">
+      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+        <span className="text-xs text-muted">{change.entity === 'shop' ? '店铺' : '点评'}</span>
+        <Badge variant={actionConfig.variant}>{actionConfig.label}</Badge>
+        <span className="text-foreground font-medium truncate">
           {s.name || s.content?.slice(0, 20) || change.entityId}
         </span>
       </div>
 
-      <div className="space-y-0.5 text-xs text-gray-600">
+      <div className="space-y-0.5 text-xs text-muted">
         {change.entity === 'shop' ? (
           <>
             {s.category && <p>分类：{s.category}</p>}
@@ -75,7 +75,7 @@ function ChangeDetail({ change }: { change: ChangeLogItem }) {
             {s.tags && s.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-0.5">
                 {s.tags.map((tag: string, i: number) => (
-                  <span key={i} className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">{tag}</span>
+                  <Badge key={i} variant="muted">{tag}</Badge>
                 ))}
               </div>
             )}
@@ -83,24 +83,19 @@ function ChangeDetail({ change }: { change: ChangeLogItem }) {
         ) : (
           <>
             {s.author && <p>作者：{s.author}</p>}
-            {s.rating != null && <p className="flex items-center gap-1">评分：{[1, 2, 3, 4, 5].map((i) => {
-              const r = s.rating!;
-              if (r >= i) return <span key={i} className="text-yellow-400">★</span>;
-              if (r > i - 1) return (
-                <span key={i} className="relative inline-block">
-                  <span className="text-gray-300">★</span>
-                  <span className="absolute top-0 left-0 text-yellow-400" style={{ clipPath: `inset(0 ${(i - r) * 100}% 0 0)` }}>★</span>
-                </span>
-              );
-              return <span key={i} className="text-gray-300">★</span>;
-            })}<span className="text-sm text-gray-500 ml-1">{s.rating.toFixed(1)}</span></p>}
-            {s.content && <p className="whitespace-pre-wrap">{s.content}</p>}
+            {s.rating != null && (
+              <p className="flex items-center gap-1">
+                评分：<StarRating rating={s.rating} />
+                <span className="text-foreground ml-1">{s.rating.toFixed(1)}</span>
+              </p>
+            )}
+            {s.content && <p className="whitespace-pre-wrap text-foreground">{s.content}</p>}
             {s.avgPrice != null && <p>人均：¥{s.avgPrice}</p>}
             {s.visitDate && <p>到访：{s.visitDate}</p>}
             {s.tags && s.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-0.5">
                 {s.tags.map((tag: string, i: number) => (
-                  <span key={i} className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">{tag}</span>
+                  <Badge key={i} variant="muted">{tag}</Badge>
                 ))}
               </div>
             )}
@@ -116,35 +111,26 @@ export default function ApprovalCard({ batch, onAction }: ApprovalCardProps) {
   const hasChanges = batch.changes && batch.changes.length > 0;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      {/* Header: Author & Time */}
+    <Card className="overflow-hidden">
       <div className="p-4 space-y-3">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="font-semibold text-gray-900 text-sm">
-              {batch.authorName}
-            </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {formatTimestamp(batch.submittedAt)}
-            </p>
+            <h3 className="font-semibold text-foreground text-sm">{batch.authorName}</h3>
+            <p className="text-xs text-muted mt-0.5">{formatTimestamp(batch.submittedAt)}</p>
           </div>
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-            待审核
-          </span>
+          <Badge variant="warning">待审核</Badge>
         </div>
 
-        {/* Summary */}
-        <p className="text-sm text-gray-600 leading-relaxed">{batch.summary}</p>
+        <p className="text-sm text-muted leading-relaxed">{batch.summary}</p>
 
-        {/* Expand toggle */}
         {hasChanges && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+            className="text-xs text-primary hover:text-primary-hover font-medium flex items-center gap-1"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-180')}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -157,34 +143,22 @@ export default function ApprovalCard({ batch, onAction }: ApprovalCardProps) {
         )}
       </div>
 
-      {/* Expanded change details */}
       {expanded && hasChanges && (
-        <div className="border-t border-gray-100 px-4 py-3 space-y-2 bg-gray-50/50">
+        <div className="border-t border-border px-4 py-3 space-y-2 bg-background/60">
           {batch.changes.map((change, i) => (
             <ChangeDetail key={`${change.entity}-${change.entityId}-${i}`} change={change} />
           ))}
         </div>
       )}
 
-      {/* Action Buttons */}
       <div className="flex gap-2 p-4 pt-0">
-        <button
-          onClick={() => onAction(batch.syncId, 'approve')}
-          className="flex-1 py-2 px-4 bg-green-600 text-white font-medium rounded-lg
-                     hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
-                     transition-colors duration-200 text-sm"
-        >
+        <Button className="flex-1 bg-success hover:bg-success/90" onClick={() => onAction(batch.syncId, 'approve')}>
           ✓ 通过
-        </button>
-        <button
-          onClick={() => onAction(batch.syncId, 'reject')}
-          className="flex-1 py-2 px-4 bg-red-600 text-white font-medium rounded-lg
-                     hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
-                     transition-colors duration-200 text-sm"
-        >
+        </Button>
+        <Button variant="danger" className="flex-1" onClick={() => onAction(batch.syncId, 'reject')}>
           ✕ 拒绝
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
