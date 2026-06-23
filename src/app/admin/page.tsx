@@ -338,8 +338,8 @@ export default function AdminPage() {
                               <option value="normal">普通</option>
                               <option value="trusted">信任</option>
                             </select>
-                            <Button variant="secondary" size="sm" onClick={() => copyToClipboard(row.token)}>复制</Button>
-                            <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" disabled={deletingToken === row.token} onClick={() => handleDeleteToken(row.token)}>
+                              <Button variant="secondary" size="sm" onClick={() => copyToClipboard(row.token)}>复制</Button>
+                              <Button variant="soft-danger" size="sm" disabled={deletingToken === row.token} onClick={() => handleDeleteToken(row.token)}>
                               {deletingToken === row.token ? '...' : '删除'}
                             </Button>
                           </div>
@@ -520,7 +520,7 @@ function FeedbackCard({
                     </div>
                     <p className="mt-1.5 text-muted whitespace-pre-wrap break-words">{fb.content}</p>
                   </div>
-                  <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" disabled={deletingFeedback === fb.id} onClick={() => onDelete(fb.id)}>
+                  <Button variant="soft-danger" size="sm" disabled={deletingFeedback === fb.id} onClick={() => onDelete(fb.id)}>
                     {deletingFeedback === fb.id ? '...' : '删除'}
                   </Button>
                 </div>

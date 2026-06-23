@@ -1,6 +1,6 @@
 import { cn } from '@/lib/cn';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'soft-danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -12,6 +12,8 @@ const variantClasses: Record<ButtonVariant, string> = {
     'bg-transparent text-muted hover:text-foreground hover:bg-primary-muted/50',
   danger:
     'bg-red-600 text-white hover:bg-red-700 disabled:hover:bg-red-600',
+  'soft-danger':
+    'border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
