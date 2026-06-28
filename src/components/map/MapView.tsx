@@ -5,6 +5,7 @@ import type { MergedShop } from '@/lib/types';
 import { getCategoryColor } from '@/lib/utils';
 import MapActionMenu from './MapActionMenu';
 import MapSearchBox, { type PoiResult } from './MapSearchBox';
+import { guardAmapCallback, AMAP_CALLBACK_TIMEOUT_MS } from '@/lib/amap-guard';
 
 function haversineDistance(lng1: number, lat1: number, lng2: number, lat2: number): number {
   const R = 6371000;
@@ -23,6 +24,9 @@ function getSearchRadius(zoom: number): number {
   if (zoom >= 10) return 20000;
   return 50000;
 }
+
+const AMAP_SCRIPT_WAIT_MS = 20_000;
+const LOCATE_OVERALL_TIMEOUT_MS = 15_000;
 
 function buildShopInfoHtml(shop: MergedShop): string {
   const parts: string[] = [];
@@ -143,6 +147,9 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   const [cityMode, setCityMode] = useState<'auto' | 'manual'>('auto');
   const [showCityPicker, setShowCityPicker] = useState(false);
   const lastGeocodeCenterRef = useRef<{ lng: number; lat: number } | null>(null);
+  const amapWaitIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cityGeocodeInFlightRef = useRef(false);
+  const locateWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-open search when entering re-pick mode
   useEffect(() => {
@@ -154,21 +161,33 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   // Reverse geocode when action menu position changes (only if no address yet)
   useEffect(() => {
     if (!actionMenu) return;
-    if (actionAddress) return; // Already have address (e.g. from POI)
+    if (actionAddress) return;
     if (!geocoderRef.current) return;
 
     setAddressLoading(true);
+    let cancelled = false;
 
-    geocoderRef.current.getAddress(
-      [actionMenu.lng, actionMenu.lat],
+    const onResult = guardAmapCallback(
+      AMAP_CALLBACK_TIMEOUT_MS,
       (status: string, result: any) => {
+        if (cancelled) return;
         setAddressLoading(false);
         if (status === 'complete' && result?.regeocode?.formattedAddress) {
           setActionAddress(result.regeocode.formattedAddress);
         }
-      }
+      },
+      () => {
+        if (cancelled) return;
+        setAddressLoading(false);
+      },
     );
-  }, [actionMenu]);
+
+    geocoderRef.current.getAddress([actionMenu.lng, actionMenu.lat], onResult);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actionMenu, actionAddress]);
 
   // Update pick marker position
   useEffect(() => {
@@ -264,8 +283,10 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     }
 
     const AMap = (window as any).AMap;
-    const searchCallback = (status: string, result: any) => {
-      const amapPois: PoiResult[] = (status === 'complete' && result?.poiList?.pois)
+    const searchCallback = guardAmapCallback(
+      AMAP_CALLBACK_TIMEOUT_MS,
+      (status: string, result: any) => {
+        const amapPois: PoiResult[] = (status === 'complete' && result?.poiList?.pois)
         ? result.poiList.pois.map((poi: any) => ({
             name: poi.name || '',
             address: poi.address || poi.pname + poi.cityname + poi.adname || '',
@@ -289,7 +310,12 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       const merged = [...localResults, ...filtered];
       merged.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
       callback(merged.slice(0, 20));
-    };
+      },
+      () => {
+        localResults.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+        callback(localResults);
+      },
+    );
 
     if (keyword.trim()) {
       // Keyword search: city-wide (setCity already scoping), always finds matches
@@ -318,14 +344,17 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     localStorage.setItem('map_city', JSON.stringify({ mode: 'auto', city: '' }));
     const center = mapInstanceRef.current?.getCenter();
     if (center && geocoderRef.current) {
-      geocoderRef.current.getAddress([center.lng, center.lat], (status: string, result: any) => {
-        if (status === 'complete' && result?.regeocode?.addressComponent) {
-          const { city, province } = result.regeocode.addressComponent;
-          const cityName = (city || province || '').replace(/市$/, '');
-          setCurrentCity(cityName);
-          lastGeocodeCenterRef.current = { lng: center.lng, lat: center.lat };
-        }
-      });
+      geocoderRef.current.getAddress(
+        [center.lng, center.lat],
+        guardAmapCallback(AMAP_CALLBACK_TIMEOUT_MS, (status: string, result: any) => {
+          if (status === 'complete' && result?.regeocode?.addressComponent) {
+            const { city, province } = result.regeocode.addressComponent;
+            const cityName = (city || province || '').replace(/市$/, '');
+            setCurrentCity(cityName);
+            lastGeocodeCenterRef.current = { lng: center.lng, lat: center.lat };
+          }
+        }),
+      );
     }
   }, []);
 
@@ -461,6 +490,13 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   }, [handleSearch, updatePoiMarkers]);
 
   // Locate current position
+  const clearLocateWatchdog = useCallback(() => {
+    if (locateWatchdogRef.current) {
+      clearTimeout(locateWatchdogRef.current);
+      locateWatchdogRef.current = null;
+    }
+  }, []);
+
   const handleLocateMe = useCallback(() => {
     if (!mapInstanceRef.current) return;
     if (locating) return;
@@ -470,10 +506,21 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
 
     setLocating(true);
     setLocateError('');
+    clearLocateWatchdog();
+    locateWatchdogRef.current = setTimeout(() => {
+      locateWatchdogRef.current = null;
+      setLocating(false);
+      setLocateError('定位超时，请检查网络');
+    }, LOCATE_OVERALL_TIMEOUT_MS);
 
     // Place or update the blue dot marker and center map
-    function placeMarker(lng: number, lat: number) {
+    function finishLocate() {
+      clearLocateWatchdog();
       setLocating(false);
+    }
+
+    function placeMarker(lng: number, lat: number) {
+      finishLocate();
       mapInstanceRef.current.setZoomAndCenter(16, [lng, lat], false, 500);
       if (locationMarkerRef.current) {
         locationMarkerRef.current.setPosition([lng, lat]);
@@ -496,15 +543,22 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     function fallbackIpLocation() {
       AMap.plugin('AMap.CitySearch', () => {
         const cs = new AMap.CitySearch();
-        cs.getLocalCity((status: string, result: any) => {
-          if (status === 'complete' && result?.info === 'OK' && result?.bounds) {
-            const center = result.bounds.getCenter();
-            placeMarker(center.lng, center.lat);
-          } else {
-            setLocating(false);
-            setLocateError('定位失败');
-          }
-        });
+        cs.getLocalCity(guardAmapCallback(
+          AMAP_CALLBACK_TIMEOUT_MS,
+          (status: string, result: any) => {
+            if (status === 'complete' && result?.info === 'OK' && result?.bounds) {
+              const center = result.bounds.getCenter();
+              placeMarker(center.lng, center.lat);
+            } else {
+              finishLocate();
+              setLocateError('定位失败');
+            }
+          },
+          () => {
+            finishLocate();
+            setLocateError('定位超时，请检查网络');
+          },
+        ));
       });
     }
 
@@ -520,14 +574,20 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
         AMap.convertFrom(
           [pos.coords.longitude, pos.coords.latitude],
           'gps',
-          (cStatus: string, cResult: any) => {
-            if (cStatus === 'complete' && cResult?.locations?.[0]) {
-              const loc = cResult.locations[0];
-              placeMarker(loc.lng, loc.lat);
-            } else {
+          guardAmapCallback(
+            AMAP_CALLBACK_TIMEOUT_MS,
+            (cStatus: string, cResult: any) => {
+              if (cStatus === 'complete' && cResult?.locations?.[0]) {
+                const loc = cResult.locations[0];
+                placeMarker(loc.lng, loc.lat);
+              } else {
+                placeMarker(pos.coords.longitude, pos.coords.latitude);
+              }
+            },
+            () => {
               placeMarker(pos.coords.longitude, pos.coords.latitude);
-            }
-          },
+            },
+          ),
         );
       },
       () => {
@@ -535,7 +595,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
     );
-  }, [locating]);
+  }, [locating, clearLocateWatchdog]);
 
   // Auto-dismiss locate error after 3s
   useEffect(() => {
@@ -556,15 +616,27 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       const last = lastGeocodeCenterRef.current;
       if (last && haversineDistance(last.lng, last.lat, center.lng, center.lat) < 5000) return;
       if (!geocoderRef.current) return;
+      if (cityGeocodeInFlightRef.current) return;
 
-      geocoderRef.current.getAddress([center.lng, center.lat], (status: string, result: any) => {
-        if (status === 'complete' && result?.regeocode?.addressComponent) {
-          const { city, province } = result.regeocode.addressComponent;
-          const cityName = (city || province || '').replace(/市$/, '');
-          setCurrentCity(cityName);
-          lastGeocodeCenterRef.current = { lng: center.lng, lat: center.lat };
-        }
-      });
+      cityGeocodeInFlightRef.current = true;
+      geocoderRef.current.getAddress(
+        [center.lng, center.lat],
+        guardAmapCallback(
+          AMAP_CALLBACK_TIMEOUT_MS,
+          (status: string, result: any) => {
+            cityGeocodeInFlightRef.current = false;
+            if (status === 'complete' && result?.regeocode?.addressComponent) {
+              const { city, province } = result.regeocode.addressComponent;
+              const cityName = (city || province || '').replace(/市$/, '');
+              setCurrentCity(cityName);
+              lastGeocodeCenterRef.current = { lng: center.lng, lat: center.lat };
+            }
+          },
+          () => {
+            cityGeocodeInFlightRef.current = false;
+          },
+        ),
+      );
     };
 
     map.on('moveend', handler);
@@ -602,17 +674,39 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     return () => observer.disconnect();
   }, []);
 
+  function clearAmapWaitInterval() {
+    if (amapWaitIntervalRef.current) {
+      clearInterval(amapWaitIntervalRef.current);
+      amapWaitIntervalRef.current = null;
+    }
+  }
+
   function loadAMap() {
+    if (mapInstanceRef.current) {
+      setMapLoaded(true);
+      return;
+    }
+
     if ((window as any).AMap) {
       initMap();
       return;
     }
 
     if ((window as any).__amapLoading) {
-      const check = setInterval(() => {
+      if (amapWaitIntervalRef.current) return;
+      const started = Date.now();
+      amapWaitIntervalRef.current = setInterval(() => {
         if ((window as any).AMap) {
-          clearInterval(check);
+          clearAmapWaitInterval();
           initMap();
+          return;
+        }
+        if (Date.now() - started > AMAP_SCRIPT_WAIT_MS || !(window as any).__amapLoading) {
+          clearAmapWaitInterval();
+          if (!(window as any).AMap) {
+            console.error('[MapView] AMap script wait timed out');
+            setMapError(true);
+          }
         }
       }, 200);
       return;
@@ -658,6 +752,10 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   }
 
   function initMap() {
+    if (mapInstanceRef.current) {
+      setMapLoaded(true);
+      return;
+    }
     if (!containerRef.current || !(window as any).AMap) {
       setMapError(true);
       return;
@@ -728,6 +826,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       mapInstanceRef.current.on('click', (e: any) => {
         const { lng, lat } = e.lnglat;
         const { x, y } = e.pixel;
+        setActionAddress('');
         setActionMenu({ x, y, lng, lat });
         infoWindowRef.current?.close();
       });
@@ -746,6 +845,9 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
 
   useEffect(() => {
     return () => {
+      clearAmapWaitInterval();
+      clearLocateWatchdog();
+      cityGeocodeInFlightRef.current = false;
       markersRef.current.forEach((marker) => marker?.setMap?.(null));
       markersRef.current = [];
       poiMarkersRef.current.forEach((m) => m?.setMap?.(null));
@@ -969,7 +1071,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
               />
             </svg>
             <p className="text-sm font-medium">地图加载失败</p>
-            <p className="text-xs mt-1 text-gray-400">请检查 API Key 配置</p>
+            <p className="text-xs mt-1 text-gray-400">请检查网络或 API Key 配置</p>
           </div>
         </div>
       )}

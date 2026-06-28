@@ -66,7 +66,7 @@ export default function ShopList({ onShopClick, selectedShopId }: ShopListProps)
         </div>
       </div>
 
-      <div className="px-4 pb-4 space-y-3">
+      <div className="px-4 pt-3 pb-4 space-y-3">
         {shops === undefined ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />

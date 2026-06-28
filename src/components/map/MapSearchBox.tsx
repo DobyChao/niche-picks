@@ -57,7 +57,20 @@ export default function MapSearchBox({
 
     setLoading(true);
     debounceRef.current = setTimeout(() => {
+      let settled = false;
+      const searchTimeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          setResults([]);
+          setLoading(false);
+          setSearched(true);
+        }
+      }, 12_000);
+
       onSearch(trimmed, (searchResults) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(searchTimeout);
         setResults(searchResults);
         setLoading(false);
         setSearched(true);

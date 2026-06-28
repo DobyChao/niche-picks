@@ -21,7 +21,13 @@ export async function GET(
     : 'https://restapi.amap.com';
 
   const targetUrl = `${upstreamBase}/${path}?${searchParams.toString()}`;
-  const response = await fetch(targetUrl);
+  let response: Response;
+  try {
+    response = await fetch(targetUrl, { signal: AbortSignal.timeout(12_000) });
+  } catch (err) {
+    console.error('[amap proxy] upstream fetch failed:', err);
+    return new NextResponse('AMap upstream request failed', { status: 504 });
+  }
   const data = await response.text();
 
   // JSONP requests have a callback parameter — must return JS, not JSON

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/cn';
+import { guardAmapCallback, AMAP_CALLBACK_TIMEOUT_MS } from '@/lib/amap-guard';
 
 interface CityPickerProps {
   currentCity: string;
@@ -75,20 +76,30 @@ export default function CityPicker({ currentCity, isAuto, onCitySelect, onAutoMo
         return;
       }
 
-      districtSearchRef.current.search(trimmed, (status: string, result: any) => {
-        setLoading(false);
-        if (status === 'complete' && result?.districtList) {
-          const cities: CityResult[] = result.districtList
-            .filter((d: any) => d.level === 'city' || d.level === 'province')
-            .map((d: any) => ({
-              name: d.name.replace(/市$/, ''),
-              center: d.center ? [d.center.lng, d.center.lat] as [number, number] : [116.397428, 39.90923],
-            }));
-          setResults(cities);
-        } else {
-          setResults([]);
-        }
-      });
+      districtSearchRef.current.search(
+        trimmed,
+        guardAmapCallback(
+          AMAP_CALLBACK_TIMEOUT_MS,
+          (status: string, result: any) => {
+            setLoading(false);
+            if (status === 'complete' && result?.districtList) {
+              const cities: CityResult[] = result.districtList
+                .filter((d: any) => d.level === 'city' || d.level === 'province')
+                .map((d: any) => ({
+                  name: d.name.replace(/市$/, ''),
+                  center: d.center ? [d.center.lng, d.center.lat] as [number, number] : [116.397428, 39.90923],
+                }));
+              setResults(cities);
+            } else {
+              setResults([]);
+            }
+          },
+          () => {
+            setLoading(false);
+            setResults([]);
+          },
+        ),
+      );
     }, 300);
 
     return () => {
