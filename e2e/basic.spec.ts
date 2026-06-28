@@ -456,6 +456,6 @@ test.describe('Map Advanced — Phase 3', () => {
     await expect(page.getByRole('heading', { name: '编辑店铺' })).not.toBeVisible();
 
     // Map hint should appear
-    await expect(page.getByText('点击地图选取新位置')).toBeVisible();
+    await expect(page.getByText(/选取新位置/)).toBeVisible();
   });
 });

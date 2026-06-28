@@ -3,6 +3,11 @@
 import { useState, useEffect } from 'react';
 import { addReview, updateReview } from '@/lib/db';
 import type { MergedReview } from '@/lib/types';
+import Input from '@/components/ui/Input';
+import Textarea from '@/components/ui/Textarea';
+import Button from '@/components/ui/Button';
+import Toast from '@/components/ui/Toast';
+import StarRating from '@/components/ui/StarRating';
 
 interface ReviewFormProps {
   shopId: string;
@@ -60,11 +65,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
     setIsSubmitting(true);
 
     try {
-      const tags = tagsInput
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-
+      const tags = tagsInput.split(/[,，]/).map((t) => t.trim()).filter((t) => t.length > 0);
       const reviewData = {
         shopId,
         rating,
@@ -79,17 +80,12 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
       if (isEditing && review) {
         await updateReview(review.id, reviewData);
       } else {
-        await addReview({
-          ...reviewData,
-          createdAt: new Date().toISOString(),
-        } as any);
+        await addReview({ ...reviewData, createdAt: new Date().toISOString() } as any);
       }
 
       onSubmit?.();
     } catch (err) {
-      setErrors({
-        general: `保存失败: ${err instanceof Error ? err.message : '未知错误'}`,
-      });
+      setErrors({ general: `保存失败: ${err instanceof Error ? err.message : '未知错误'}` });
     } finally {
       setIsSubmitting(false);
     }
@@ -97,30 +93,15 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      {errors.general && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          ✕ {errors.general}
-        </div>
-      )}
+      {errors.general && <Toast variant="error">✕ {errors.general}</Toast>}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-foreground mb-1">
           评分 <span className="text-red-500">*</span>
         </label>
         <div className="flex items-center gap-2">
-          <div className="flex">
-            {[1, 2, 3, 4, 5].map((i) => {
-              if (rating >= i) return <span key={i} className="text-2xl text-yellow-400">★</span>;
-              if (rating > i - 1) return (
-                <span key={i} className="relative inline-block text-2xl">
-                  <span className="text-gray-300">★</span>
-                  <span className="absolute top-0 left-0 text-yellow-400" style={{ clipPath: `inset(0 ${(i - rating) * 100}% 0 0)` }}>★</span>
-                </span>
-              );
-              return <span key={i} className="text-2xl text-gray-300">★</span>;
-            })}
-          </div>
-          <span className="text-lg font-semibold text-gray-700 tabular-nums">{rating.toFixed(1)}</span>
+          <StarRating rating={rating} size="md" />
+          <span className="text-lg font-semibold text-foreground tabular-nums">{rating.toFixed(1)}</span>
         </div>
         <input
           type="range"
@@ -129,105 +110,38 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
           step="0.1"
           value={rating}
           onChange={(e) => setRating(Number(e.target.value))}
-          className="w-full mt-1 accent-orange-500"
+          className="w-full mt-2"
         />
         {errors.rating && <p className="mt-1 text-xs text-red-600">{errors.rating}</p>}
       </div>
 
-      <div>
-        <label htmlFor="review-content" className="block text-sm font-medium text-gray-700 mb-1">
-          点评内容 <span className="text-red-500">*</span>
-        </label>
-        <textarea
-          id="review-content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="分享你的体验..."
-          rows={3}
-          className={`w-full px-3 py-2 border rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400 resize-none
-                     ${errors.content ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
-        />
-        {errors.content && <p className="mt-1 text-xs text-red-600">{errors.content}</p>}
-      </div>
+      <Textarea
+        id="review-content"
+        label="点评内容 *"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="分享你的体验..."
+        rows={3}
+        error={errors.content}
+      />
 
-      <div>
-        <label htmlFor="review-author" className="block text-sm font-medium text-gray-700 mb-1">作者</label>
-        <input
-          id="review-author"
-          type="text"
-          value={author}
-          onChange={(e) => setAuthor(e.target.value)}
-          placeholder="你的名字"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
+      <Input id="review-author" label="作者" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="你的名字" />
 
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label htmlFor="review-price" className="block text-sm font-medium text-gray-700 mb-1">人均消费 (¥)</label>
-          <input
-            id="review-price"
-            type="number"
-            step="any"
-            value={avgPrice}
-            onChange={(e) => setAvgPrice(e.target.value)}
-            placeholder="如：80"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       placeholder-gray-400"
-          />
-        </div>
-        <div>
-          <label htmlFor="review-date" className="block text-sm font-medium text-gray-700 mb-1">到访日期</label>
-          <input
-            id="review-date"
-            type="date"
-            value={visitDate}
-            onChange={(e) => setVisitDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       placeholder-gray-400"
-          />
-        </div>
+        <Input id="review-price" label="人均消费 (¥)" type="number" step="any" value={avgPrice} onChange={(e) => setAvgPrice(e.target.value)} placeholder="如：80" />
+        <Input id="review-date" label="到访日期" type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
       </div>
 
-      <div>
-        <label htmlFor="review-tags" className="block text-sm font-medium text-gray-700 mb-1">标签</label>
-        <input
-          id="review-tags"
-          type="text"
-          value={tagsInput}
-          onChange={(e) => setTagsInput(e.target.value)}
-          placeholder="用逗号分隔，如：环境好, 值得推荐"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                     placeholder-gray-400"
-        />
-      </div>
+      <Input id="review-tags" label="标签" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="用逗号分隔，如：环境好, 值得推荐" />
 
       <div className="flex gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="flex-1 py-2 px-4 bg-orange-500 text-white font-medium rounded-lg
-                     hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors duration-200 text-sm"
-        >
+        <Button type="submit" disabled={isSubmitting} className="flex-1">
           {isSubmitting ? '保存中...' : isEditing ? '更新点评' : '提交点评'}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel}>
             取消
-          </button>
+          </Button>
         )}
       </div>
     </form>

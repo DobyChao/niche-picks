@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import ShopList from '@/components/shop/ShopList';
 import ShopForm from '@/components/shop/ShopForm';
@@ -9,13 +9,19 @@ import { useMergedShops, useMergedReviews, deleteShop, deleteReview, getOriginal
 import type { MergedShop, MergedReview, ServerShop, ServerReview } from '@/lib/types';
 import { autoPullIfReady } from '@/lib/sync/pull';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import StarRating from '@/components/ui/StarRating';
+import Modal from '@/components/ui/Modal';
+import { cn } from '@/lib/cn';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
 
 export default function HomePage() {
   const [showShopForm, setShowShopForm] = useState(false);
   const [editingShop, setEditingShop] = useState<MergedShop | undefined>(undefined);
-  const [selectedShop, setSelectedShop] = useState<MergedShop | null>(null);
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [editingReview, setEditingReview] = useState<MergedReview | undefined>(undefined);
   const [flyToShop, setFlyToShop] = useState<MergedShop | null>(null);
@@ -45,6 +51,13 @@ export default function HomePage() {
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ startPos: number; startSize: number; pointerId: number; moved: boolean } | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+
+  const shops = useMergedShops();
+  const selectedShop = useMemo(
+    () => (selectedShopId && shops ? shops.find((s) => s.id === selectedShopId) ?? null : null),
+    [selectedShopId, shops],
+  );
+  const shopReviews = useMergedReviews(selectedShopId ?? undefined);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 768px)');
@@ -144,10 +157,7 @@ export default function HomePage() {
     setShowOriginalShop(false);
     setReviewOriginalIds(new Set());
     setOriginalReviewData(new Map());
-  }, [selectedShop?.id]);
-
-  const shops = useMergedShops();
-  const shopReviews = useMergedReviews(selectedShop?.id);
+  }, [selectedShopId]);
 
   const handleShopSaved = useCallback(() => {
     setShowShopForm(false);
@@ -158,7 +168,7 @@ export default function HomePage() {
   }, []);
 
   const handleShopClick = useCallback((shop: MergedShop) => {
-    setSelectedShop(shop);
+    setSelectedShopId(shop.id);
     setEditingReview(undefined);
     setShowReviewForm(false);
     setFlyToShop(shop);
@@ -204,7 +214,19 @@ export default function HomePage() {
     setRepickEditingShop(editingShop);
     setShowShopForm(false);
     setRepickMode(true);
+    if (typeof editingShop.lng === 'number' && typeof editingShop.lat === 'number') {
+      setFlyToShop(editingShop);
+    }
   }, [editingShop]);
+
+  const handleCancelRepick = useCallback(() => {
+    if (repickEditingShop) {
+      setEditingShop(repickEditingShop);
+      setShowShopForm(true);
+    }
+    setRepickMode(false);
+    setRepickEditingShop(null);
+  }, [repickEditingShop]);
 
   const handleOpenShopForm = useCallback(() => {
     setEditingShop(undefined);
@@ -225,7 +247,7 @@ export default function HomePage() {
       onConfirm: async () => {
         setConfirmState(null);
         await deleteShop(shop.id);
-        setSelectedShop(null);
+        setSelectedShopId(null);
         setShowReviewForm(false);
       },
     });
@@ -263,24 +285,7 @@ export default function HomePage() {
     });
   }, []);
 
-  const renderStars = (rating: number) => {
-    return (
-      <>
-        {[1, 2, 3, 4, 5].map((i) =>
-          rating >= i ? (
-            <span key={i} className="text-yellow-400">★</span>
-          ) : rating > i - 1 ? (
-            <span key={i} className="relative inline-block">
-              <span className="text-gray-300">★</span>
-              <span className="absolute top-0 left-0 text-yellow-400" style={{ clipPath: `inset(0 ${(i - rating) * 100}% 0 0)` }}>★</span>
-            </span>
-          ) : (
-            <span key={i} className="text-gray-300">★</span>
-          )
-        )}
-      </>
-    );
-  };
+  const renderStars = (rating: number) => <StarRating rating={rating} />;
 
   return (
     <div className="flex flex-col md:flex-row flex-1 min-h-0 h-full relative">
@@ -296,8 +301,10 @@ export default function HomePage() {
           shops={shops ?? []}
           onMapActionAddShop={handleMapActionAddShop}
           flyToShop={flyToShop}
-          selectedShopId={selectedShop?.id ?? null}
+          selectedShopId={selectedShopId}
           repickMode={repickMode}
+          repickShopName={repickEditingShop?.name}
+          onCancelRepick={handleCancelRepick}
           onShopSelect={(shop) => handleShopClick(shop)}
           onEditShop={(shop) => handleOpenEditShop(shop)}
         />
@@ -305,17 +312,17 @@ export default function HomePage() {
 
       {/* Desktop resize handle with collapse toggle */}
       <div
-        className="hidden md:flex relative w-1.5 bg-gray-200/80 hover:bg-blue-400 active:bg-blue-500 cursor-col-resize touch-none shrink-0"
+        className="hidden md:flex relative w-1.5 bg-border/80 hover:bg-primary/60 active:bg-primary cursor-col-resize touch-none shrink-0"
         onPointerDown={handleDesktopPointerDown}
         onPointerMove={handleDesktopPointerMove}
         onPointerUp={handlePointerUp}
       >
         <button
           onClick={(e) => { e.stopPropagation(); setPanelCollapsed(!panelCollapsed); }}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-5 h-10 bg-white border border-gray-200 rounded-md shadow-sm flex items-center justify-center hover:bg-gray-50 hover:border-blue-300 transition-colors"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-5 h-10 bg-surface border border-border rounded-[var(--radius-button)] shadow-[var(--shadow-card)] flex items-center justify-center hover:bg-primary-muted/50 hover:border-primary/30 transition-colors"
           title={panelCollapsed ? '展开面板' : '折叠面板'}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d={panelCollapsed ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'} />
           </svg>
         </button>
@@ -323,7 +330,7 @@ export default function HomePage() {
 
       {/* Sidebar */}
       <div
-        className="relative overflow-hidden bg-white shadow-sm"
+        className="relative overflow-hidden bg-surface shadow-[var(--shadow-card)]"
         style={isDesktop
           ? {
               width: panelCollapsed ? 0 : sidebarWidth,
@@ -340,10 +347,12 @@ export default function HomePage() {
             }
         }
       >
-        <div className={`h-full flex flex-col ${isDesktop ? 'border-l border-gray-200' : ''}`}>
-          {/* Sidebar header doubles as the mobile drag-to-resize handle. handleMobilePointerDown early-returns on desktop. */}
+        <div className={cn('h-full flex flex-col', isDesktop && 'border-l border-border')}>
           <div
-            className={`flex-shrink-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-2 ${!isDesktop ? 'cursor-row-resize touch-none' : ''}`}
+            className={cn(
+              'flex-shrink-0 bg-surface border-b border-border px-4 py-3 flex items-center justify-between gap-2',
+              !isDesktop && 'cursor-row-resize touch-none',
+            )}
             onPointerDown={handleMobilePointerDown}
             onPointerMove={handleMobilePointerMove}
             onPointerUp={handlePointerUp}
@@ -351,14 +360,14 @@ export default function HomePage() {
             {/* Hide title on mobile when a shop is selected so the action cluster has room. */}
             <div className="flex items-center gap-1 min-w-0">
               {(isDesktop || !selectedShop) && (
-                <h2 className="text-lg font-semibold text-gray-800 shrink-0">
+                <h2 className="text-lg font-semibold text-foreground shrink-0">
                   店铺列表
                 </h2>
               )}
               <button
                 onClick={handleRefresh}
                 disabled={isPulling}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:hover:bg-transparent"
+                className="p-2 text-muted hover:text-foreground hover:bg-primary-muted/50 rounded-[var(--radius-button)] transition-colors flex items-center justify-center disabled:opacity-50"
                 title="刷新"
                 aria-label="刷新"
               >
@@ -370,45 +379,39 @@ export default function HomePage() {
             <div className="flex items-center gap-1.5 shrink-0">
               {selectedShop ? (
                 <>
-                  <button
-                    onClick={() => {
-                      setSelectedShop(null);
+                  <Button variant="ghost" size="sm" onClick={() => {
+                      setSelectedShopId(null);
                       setFlyToShop(null);
                       setShowReviewForm(false);
-                    }}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
+                    }}>
                     ← 返回列表
-                  </button>
-                  <button
-                    onClick={() => handleOpenEditShop(selectedShop)}
-                    className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => handleOpenEditShop(selectedShop)}>
                     编辑店铺
-                  </button>
-                  <button
-                    onClick={() => handleDeleteShop(selectedShop)}
-                    className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
+                  </Button>
+                  <Button variant="soft-danger" size="sm" onClick={() => handleDeleteShop(selectedShop)}>
                     删除
-                  </button>
+                  </Button>
                 </>
               ) : (
-                <button
-                  onClick={handleOpenShopForm}
-                  className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  新增店铺
-                </button>
+                isDesktop && (
+                  <button
+                    type="button"
+                    onClick={handleOpenShopForm}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-primary text-white text-sm font-medium rounded-[var(--radius-button)] hover:bg-primary-hover transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    新增店铺
+                  </button>
+                )
               )}
               {/* Mobile collapse chevron. closest('button') guard in handleMobilePointerDown lets taps reach onClick instead of starting a drag. */}
               {!isDesktop && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setPanelCollapsed(true); }}
-                  className="md:hidden p-2.5 -mr-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center"
+                  className="md:hidden p-2.5 -mr-2 text-muted hover:text-foreground hover:bg-primary-muted/50 rounded-[var(--radius-button)] transition-colors flex items-center justify-center"
                   title="折叠列表"
                   aria-label="折叠列表"
                 >
@@ -426,16 +429,16 @@ export default function HomePage() {
               <div className="p-4 space-y-4">
                 {/* Shop name (title) + rating summary */}
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900 break-words leading-tight">
+                  <h1 className="text-xl font-bold text-foreground break-words leading-snug">
                     {selectedShop.name}
                   </h1>
                   {selectedShop.reviewCount > 0 && (
                     <div className="mt-1 flex items-center gap-2 text-sm">
-                      <span className="text-amber-500">{renderStars(selectedShop.avgRating ?? 0)}</span>
-                      <span className="text-gray-600 font-medium tabular-nums">{selectedShop.avgRating?.toFixed(1)}</span>
-                      <span className="text-gray-400 text-xs">({selectedShop.reviewCount}条)</span>
+                      {renderStars(selectedShop.avgRating ?? 0)}
+                      <span className="text-foreground font-medium tabular-nums">{selectedShop.avgRating?.toFixed(1)}</span>
+                      <span className="text-muted text-xs">({selectedShop.reviewCount}条)</span>
                       {selectedShop.avgPrice != null && (
-                        <span className="text-gray-400 text-xs">人均¥{Math.round(selectedShop.avgPrice)}</span>
+                        <span className="text-muted text-xs">人均¥{Math.round(selectedShop.avgPrice)}</span>
                       )}
                     </div>
                   )}
@@ -443,80 +446,72 @@ export default function HomePage() {
 
                 {/* Draft/Original Toggle */}
                 {(selectedShop._syncBadge === 'draft' || selectedShop._syncBadge === 'pending') && (
-                  <div className="flex items-center gap-2 p-2.5 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <span className="text-xs text-yellow-700 font-medium">
+                  <div className="flex items-center gap-2 p-2.5 bg-warning-muted border border-warning/20 rounded-[var(--radius-button)]">
+                    <Badge variant="warning">
                       {selectedShop._syncBadge === 'draft' ? '有未提交的修改' : '修改同步中'}
-                    </span>
+                    </Badge>
                     {originalShopData ? (
                       <div className="flex-1 flex justify-end">
                         <button
                           onClick={() => setShowOriginalShop(!showOriginalShop)}
-                          className="text-xs px-2.5 py-1 rounded-md font-medium transition-colors bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+                          className="text-xs px-2.5 py-1 rounded-[var(--radius-button)] font-medium transition-colors bg-warning-muted text-warning hover:bg-warning/10"
                         >
                           {showOriginalShop ? '显示变更' : '显示原始'}
                         </button>
                       </div>
                     ) : (
-                      <span className="text-xs text-yellow-600 ml-auto">新创建</span>
+                      <span className="text-xs text-warning ml-auto">新创建</span>
                     )}
                   </div>
                 )}
 
                 {/* Shop Info */}
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <Card padding="md" className="bg-background space-y-2">
                   {(() => {
                     const displayShop = showOriginalShop && originalShopData ? originalShopData : selectedShop;
                     return (
                       <>
                         {displayShop.category && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {displayShop.category}
-                          </span>
+                          <Badge variant="default">{displayShop.category}</Badge>
                         )}
                         {displayShop.address && (
-                          <p className="text-sm text-gray-600">📍 {displayShop.address}</p>
+                          <p className="text-sm text-muted">{displayShop.address}</p>
                         )}
                         {displayShop.phone && (
-                          <p className="text-sm text-gray-600">📞 {displayShop.phone}</p>
+                          <p className="text-sm text-muted">{displayShop.phone}</p>
                         )}
                         {displayShop.businessHours && (
-                          <p className="text-sm text-gray-600">🕐 {displayShop.businessHours}</p>
+                          <p className="text-sm text-muted">{displayShop.businessHours}</p>
                         )}
                         {displayShop.tags && displayShop.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 pt-1">
                             {displayShop.tags.map((tag, i) => (
-                              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700">
-                                {tag}
-                              </span>
+                              <Badge key={i} variant="muted">{tag}</Badge>
                             ))}
                           </div>
                         )}
                       </>
                     );
                   })()}
-                </div>
+                </Card>
 
                 {/* Reviews Section */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-700">
+                    <h3 className="text-sm font-semibold text-foreground">
                       点评 ({shopReviews?.length ?? 0})
                     </h3>
-                    <button
-                      onClick={handleAddReview}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white text-xs font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                    >
+                    <Button size="sm" onClick={handleAddReview}>
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                       </svg>
                       写点评
-                    </button>
+                    </Button>
                   </div>
 
-                  {/* Review Form */}
                   {showReviewForm && (
-                    <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">
+                    <Card padding="md" className="mb-4">
+                      <h4 className="text-sm font-medium text-foreground mb-3">
                         {editingReview ? '编辑点评' : '新增点评'}
                       </h4>
                       <ReviewForm
@@ -525,14 +520,13 @@ export default function HomePage() {
                         onSubmit={handleReviewSaved}
                         onCancel={() => { setShowReviewForm(false); setEditingReview(undefined); }}
                       />
-                    </div>
+                    </Card>
                   )}
 
-                  {/* Review List */}
                   {(!shopReviews || shopReviews.length === 0) ? (
-                    <div className="text-center py-8 text-gray-400">
+                    <div className="text-center py-8 text-muted">
                       <p className="text-sm">还没有点评</p>
-                      <p className="text-xs mt-1">点击"写点评"分享你的体验</p>
+                      <p className="text-xs mt-1">点击「写点评」分享你的体验</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -542,23 +536,20 @@ export default function HomePage() {
                         const displayReview = isShowingOriginal && originalReview ? originalReview : review;
 
                         return (
-                          <div
-                            key={review.id}
-                            className="bg-white border border-gray-100 rounded-lg p-3 hover:shadow-sm transition-shadow"
-                          >
+                          <Card key={review.id} padding="sm" className="hover:shadow-[var(--shadow-elevated)] transition-shadow">
                             <div className="flex items-center justify-between mb-1">
                               <span className="text-sm flex items-center gap-1.5">
                                 {renderStars(displayReview.rating)}
-                                <span className="text-gray-500 font-medium tabular-nums">{displayReview.rating.toFixed(1)}</span>
+                                <span className="text-muted font-medium tabular-nums">{displayReview.rating.toFixed(1)}</span>
                               </span>
                               <div className="flex items-center gap-2">
                                 {displayReview.avgPrice != null && (
-                                  <span className="text-xs text-gray-500">¥{displayReview.avgPrice}/人</span>
+                                  <span className="text-xs text-muted">¥{displayReview.avgPrice}/人</span>
                                 )}
                                 {(review._syncBadge === 'draft' || review._syncBadge === 'pending') && (
                                   <button
                                     onClick={() => toggleReviewOriginal(review)}
-                                    className="text-xs px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors"
+                                    className="text-xs px-1.5 py-0.5 rounded-[var(--radius-button)] bg-warning-muted text-warning hover:bg-warning/10 transition-colors"
                                   >
                                     {isShowingOriginal ? '显示变更' : '显示原始'}
                                   </button>
@@ -566,38 +557,36 @@ export default function HomePage() {
                               </div>
                             </div>
                             {displayReview.author && (
-                              <p className="text-xs text-gray-500 mb-1">{displayReview.author}</p>
+                              <p className="text-xs text-muted mb-1">{displayReview.author}</p>
                             )}
                             {displayReview.content && (
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{displayReview.content}</p>
+                              <p className="text-sm text-foreground whitespace-pre-wrap">{displayReview.content}</p>
                             )}
                             {displayReview.tags && displayReview.tags.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {displayReview.tags.map((tag, i) => (
-                                  <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
-                                    {tag}
-                                  </span>
+                                  <Badge key={i} variant="muted">{tag}</Badge>
                                 ))}
                               </div>
                             )}
                             {displayReview.visitDate && (
-                              <p className="text-xs text-gray-400 mt-2">到访: {displayReview.visitDate}</p>
+                              <p className="text-xs text-muted mt-2">到访: {displayReview.visitDate}</p>
                             )}
                             <div className="flex justify-end mt-2 gap-3">
                               <button
                                 onClick={() => handleEditReview(review)}
-                                className="text-xs text-blue-500 hover:text-blue-700"
+                                className="text-xs text-primary hover:text-primary-hover"
                               >
                                 编辑
                               </button>
                               <button
                                 onClick={() => handleDeleteReview(review)}
-                                className="text-xs text-red-500 hover:text-red-700"
+                                className="text-xs text-red-600 hover:text-red-700 px-2 py-1 rounded-[var(--radius-button)] border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
                               >
                                 删除
                               </button>
                             </div>
-                          </div>
+                          </Card>
                         );
                       })}
                     </div>
@@ -614,7 +603,7 @@ export default function HomePage() {
         {!selectedShop && (
           <button
             onClick={handleOpenShopForm}
-            className="md:hidden absolute bottom-6 right-6 z-30 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all"
+            className="md:hidden absolute bottom-6 right-6 z-30 w-14 h-14 bg-primary text-white rounded-full shadow-[var(--shadow-elevated)] flex items-center justify-center hover:bg-primary-hover active:scale-95 transition-all"
             aria-label="新增店铺"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -625,7 +614,7 @@ export default function HomePage() {
 
         {/* Pull feedback toast */}
         {pullMessage && (
-          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 px-3.5 py-2 bg-gray-800/90 text-white text-xs rounded-full shadow-lg whitespace-nowrap pointer-events-none">
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 px-3.5 py-2 bg-foreground/90 text-background text-xs rounded-full shadow-[var(--shadow-elevated)] whitespace-nowrap pointer-events-none">
             {pullMessage}
           </div>
         )}
@@ -635,20 +624,19 @@ export default function HomePage() {
       {panelCollapsed && isDesktop && (
         <button
           onClick={() => setPanelCollapsed(false)}
-          className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-16 bg-white border border-gray-200 rounded-l-lg shadow-md items-center justify-center hover:bg-gray-50 transition-colors"
+          className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-16 bg-surface border border-border rounded-l-[var(--radius-card)] shadow-[var(--shadow-elevated)] items-center justify-center hover:bg-primary-muted/40 transition-colors"
           title="展开面板"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M17 19l-7-7 7-7" />
           </svg>
         </button>
       )}
 
-      {/* Mobile expand button (when sidebar collapsed) */}
       {panelCollapsed && !isDesktop && (
         <button
           onClick={() => setPanelCollapsed(false)}
-          className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-white border border-gray-200 rounded-full shadow-md items-center justify-center hover:bg-gray-50 active:scale-95 transition-all text-sm text-gray-600 font-medium flex gap-1.5"
+          className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-surface border border-border rounded-full shadow-[var(--shadow-elevated)] items-center justify-center hover:bg-primary-muted/40 active:scale-95 transition-all text-sm text-muted font-medium flex gap-1.5"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
@@ -659,33 +647,36 @@ export default function HomePage() {
 
       {/* ShopForm modal */}
       {showShopForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-800">
-                {editingShop ? '编辑店铺' : '新增店铺'}
-              </h3>
-              <button
-                onClick={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
-                className="p-1 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
-                aria-label="关闭"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-6">
-              <ShopForm
-                shop={editingShop}
-                prefilledData={prefilledFormData}
-                onSubmit={handleShopSaved}
-                onCancel={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
-                onRepickLocation={editingShop ? handleRepickLocation : undefined}
-              />
-            </div>
+        <Modal
+          open={showShopForm}
+          onClose={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+          maxWidth="lg"
+          className="max-h-[90vh] overflow-y-auto"
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-surface z-10">
+            <h3 className="text-lg font-semibold text-foreground">
+              {editingShop ? '编辑店铺' : '新增店铺'}
+            </h3>
+            <button
+              onClick={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+              className="p-1 rounded-full hover:bg-primary-muted/50 transition-colors text-muted"
+              aria-label="关闭"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-        </div>
+          <div className="p-6">
+            <ShopForm
+              shop={editingShop}
+              prefilledData={prefilledFormData}
+              onSubmit={handleShopSaved}
+              onCancel={() => { setShowShopForm(false); setEditingShop(undefined); setPrefilledFormData(null); setRepickMode(false); setRepickEditingShop(null); }}
+              onRepickLocation={editingShop ? handleRepickLocation : undefined}
+            />
+          </div>
+        </Modal>
       )}
 
       <ConfirmDialog

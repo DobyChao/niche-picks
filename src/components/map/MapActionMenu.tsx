@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { cn } from '@/lib/cn';
 
 interface NearbyShop {
   id: string;
@@ -20,22 +21,18 @@ interface MapActionMenuProps {
   onClose: () => void;
   nearbyShops?: NearbyShop[];
   onShopSelect?: (shopId: string) => void;
+  mode?: 'add' | 'repick';
 }
 
-export default function MapActionMenu({ x, y, lng, lat, address, addressLoading, onAddShop, onClose, nearbyShops, onShopSelect }: MapActionMenuProps) {
+export default function MapActionMenu({ x, y, lng, lat, address, addressLoading, onAddShop, onClose, nearbyShops, onShopSelect, mode = 'add' }: MapActionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showNearby, setShowNearby] = useState(false);
 
-  // Close on click outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
     }
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleClick);
-    }, 0);
+    const timer = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClick);
@@ -46,7 +43,6 @@ export default function MapActionMenu({ x, y, lng, lat, address, addressLoading,
     onAddShop({ lng, lat, address });
   }, [lng, lat, address, onAddShop]);
 
-  // Position menu, adjusting for viewport edges
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
   let left: number;
   let top = y + 10;
@@ -62,68 +58,61 @@ export default function MapActionMenu({ x, y, lng, lat, address, addressLoading,
     if (top < 0) top = 10;
   }
 
-  const hasNearby = nearbyShops && nearbyShops.length > 0;
+  const isRepick = mode === 'repick';
+  const hasNearby = !isRepick && nearbyShops && nearbyShops.length > 0;
+
+  const menuItemClass = (enabled = true) =>
+    cn(
+      'w-full text-left px-4 py-2 text-sm transition-colors',
+      enabled ? 'text-foreground hover:bg-primary-muted/50 hover:text-primary' : 'text-muted cursor-default',
+    );
 
   return (
     <div
       ref={menuRef}
-      className="absolute bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20 sm:min-w-[180px] sm:max-w-[220px] max-h-[70vh] overflow-y-auto"
+      className="absolute bg-surface/95 backdrop-blur-md rounded-[var(--radius-card)] shadow-[var(--shadow-elevated)] border border-border py-2 z-20 sm:min-w-[180px] sm:max-w-[220px] max-h-[70vh] overflow-y-auto"
       style={{ left, top, ...(isMobile ? { width: 'calc(100vw - 32px)' } : {}) }}
     >
-      <button
-        onClick={handleAddShop}
-        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-      >
-        在这里添加店铺
+      <button onClick={handleAddShop} className={menuItemClass()}>
+        {isRepick ? '确认选取此位置' : '在这里添加店铺'}
       </button>
-      <button
-        onClick={() => setShowNearby(!showNearby)}
-        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-          hasNearby
-            ? 'text-gray-700 hover:bg-blue-50 hover:text-blue-700'
-            : 'text-gray-400 cursor-default'
-        }`}
-      >
-        显示附近店铺
-      </button>
+      {!isRepick && (
+        <button onClick={() => setShowNearby(!showNearby)} className={menuItemClass(!!hasNearby)}>
+          显示附近店铺
+        </button>
+      )}
       {showNearby && (
-        <div className="border-t border-gray-100 mt-1 pt-1">
+        <div className="border-t border-border mt-1 pt-1">
           {hasNearby ? (
             <div className="space-y-0.5">
               {nearbyShops!.map((shop) => (
                 <button
                   key={shop.id}
                   onClick={() => onShopSelect?.(shop.id)}
-                  className="w-full text-left px-4 py-1.5 hover:bg-gray-50 transition-colors"
+                  className="w-full text-left px-4 py-1.5 hover:bg-primary-muted/40 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-gray-700 truncate">{shop.name}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">
-                      {shop.distance < 1000
-                        ? `${Math.round(shop.distance)}m`
-                        : `${(shop.distance / 1000).toFixed(1)}km`}
+                    <span className="text-sm text-foreground truncate">{shop.name}</span>
+                    <span className="text-xs text-muted flex-shrink-0">
+                      {shop.distance < 1000 ? `${Math.round(shop.distance)}m` : `${(shop.distance / 1000).toFixed(1)}km`}
                     </span>
                   </div>
-                  {shop.address && (
-                    <p className="text-xs text-gray-400 truncate">{shop.address}</p>
-                  )}
+                  {shop.address && <p className="text-xs text-muted truncate">{shop.address}</p>}
                 </button>
               ))}
             </div>
           ) : (
-            <p className="px-4 py-2 text-xs text-gray-400">附近没有已记录的店铺</p>
+            <p className="px-4 py-2 text-xs text-muted">附近没有已记录的店铺</p>
           )}
         </div>
       )}
       {address && (
-        <p className="px-4 pt-1 text-xs text-gray-400 border-t border-gray-100 mt-1 pt-2 truncate" title={address}>
+        <p className="px-4 pt-2 text-xs text-muted border-t border-border mt-1 truncate" title={address}>
           {address}
         </p>
       )}
       {addressLoading && !address && (
-        <p className="px-4 pt-1 text-xs text-gray-300 border-t border-gray-100 mt-1 pt-2">
-          正在获取地址...
-        </p>
+        <p className="px-4 pt-2 text-xs text-muted border-t border-border mt-1">正在获取地址...</p>
       )}
     </div>
   );

@@ -9,16 +9,19 @@ import {
   validateSyncToken,
 } from '@/lib/sync/auth';
 import { autoPullIfReady } from '@/lib/sync/pull';
+import PageHeader from '@/components/ui/PageHeader';
+import { Card } from '@/components/ui/Card';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Toast from '@/components/ui/Toast';
 
 export default function IdentityPage() {
   const [token, setToken] = useState('');
   const [authorName, setAuthorName] = useState('');
   const [hasSavedIdentity, setHasSavedIdentity] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     const saved = getSavedSyncIdentity();
@@ -63,18 +66,12 @@ export default function IdentityPage() {
               : '身份已保存，已自动拉取（云端暂无数据）。',
         });
       } else if (pullResult.status === 'error') {
-        setMessage({
-          type: 'error',
-          text: `身份已保存，但自动拉取失败: ${pullResult.error}`,
-        });
+        setMessage({ type: 'error', text: `身份已保存，但自动拉取失败: ${pullResult.error}` });
       } else {
         setMessage({ type: 'success', text: '同步身份已验证并保存到本机。' });
       }
     } catch (error) {
-      setMessage({
-        type: 'error',
-        text: `保存失败: ${error instanceof Error ? error.message : '未知错误'}`,
-      });
+      setMessage({ type: 'error', text: `保存失败: ${error instanceof Error ? error.message : '未知错误'}` });
     } finally {
       setIsSaving(false);
     }
@@ -89,118 +86,60 @@ export default function IdentityPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto w-full p-4 space-y-6">
-      <div className="pt-4">
-        <h1 className="text-2xl font-bold text-gray-900">同步身份</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          配置这台设备用于同步的 User Token 和提交昵称。
-        </p>
-      </div>
+    <div className="max-w-3xl mx-auto w-full p-4 md:p-6 space-y-6">
+      <PageHeader
+        title="同步身份"
+        description="配置这台设备用于同步的 User Token 和提交昵称。"
+        backHref="/sync"
+        backLabel="返回同步管理"
+      />
 
-      <form
-        onSubmit={handleSave}
-        className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-5"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">本机认证信息</h2>
-            <p className="mt-1 text-xs text-gray-500">
-              信息只保存在当前浏览器，不会作为账号登录状态共享到其他设备。
-            </p>
+      <Card padding="lg">
+        <form onSubmit={handleSave} className="space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-foreground">本机认证信息</h2>
+              <p className="mt-1 text-xs text-muted">
+                信息只保存在当前浏览器，不会作为账号登录状态共享到其他设备。
+              </p>
+            </div>
+            {hasSavedIdentity && <Badge variant="success">已保存</Badge>}
           </div>
-          {hasSavedIdentity && (
-            <span className="shrink-0 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
-              已保存
-            </span>
-          )}
-        </div>
 
-        <div>
-          <label
-            htmlFor="identity-token"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            User Token
-          </label>
-          <input
+          <Input
             id="identity-token"
+            label="User Token"
             type="password"
             value={token}
-            onChange={(event) => setToken(event.target.value)}
+            onChange={(e) => setToken(e.target.value)}
             placeholder="输入你的同步 Token"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       placeholder-gray-400"
           />
-        </div>
 
-        <div>
-          <label
-            htmlFor="identity-author"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            昵称
-          </label>
-          <input
+          <Input
             id="identity-author"
-            type="text"
+            label="昵称"
             value={authorName}
-            onChange={(event) => setAuthorName(event.target.value)}
+            onChange={(e) => setAuthorName(e.target.value)}
             placeholder="提交审核时显示的昵称"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       placeholder-gray-400"
           />
-        </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg
-                       hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors text-sm"
-          >
-            {isSaving ? '验证中...' : '验证并保存'}
-          </button>
-          {hasSavedIdentity && (
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={isSaving}
-              className="px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg
-                         hover:bg-red-50 hover:text-red-600 disabled:opacity-50
-                         transition-colors text-sm"
-            >
-              清除本机身份
-            </button>
-          )}
-        </div>
-
-        {message && (
-          <div
-            className={`p-3 rounded-lg text-sm ${
-              message.type === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}
-          >
-            {message.type === 'success' ? '✓' : '✕'} {message.text}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? '验证中...' : '验证并保存'}
+            </Button>
+            {hasSavedIdentity && (
+              <Button type="button" variant="secondary" onClick={handleClear} disabled={isSaving} className="hover:text-red-600 hover:border-red-200 hover:bg-red-50">
+                清除本机身份
+              </Button>
+            )}
           </div>
-        )}
-      </form>
 
-      <div className="pt-4 border-t border-gray-200 flex gap-4">
-        <Link
-          href="/sync"
-          className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium transition-colors"
-        >
-          返回同步管理
-        </Link>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700 font-medium transition-colors"
-        >
+          {message && <Toast variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Toast>}
+        </form>
+      </Card>
+
+      <div className="flex gap-4">
+        <Link href="/" className="text-sm text-muted hover:text-foreground transition-colors">
           返回首页
         </Link>
       </div>

@@ -4,42 +4,38 @@ import { useMemo, useState, useCallback } from 'react';
 import { useAllChanges, revertChange } from '@/lib/db';
 import type { ChangeEntry } from '@/lib/db';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
+import { Card } from '@/components/ui/Card';
+import { cn } from '@/lib/cn';
 
 const ACTION_CONFIG = {
-  create: { label: '新建', color: 'bg-green-50 text-green-700 border-green-200' },
-  update: { label: '修改', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  delete: { label: '删除', color: 'bg-red-50 text-red-700 border-red-200' },
+  create: { label: '新建', variant: 'success' as const },
+  update: { label: '修改', variant: 'default' as const },
+  delete: { label: '删除', variant: 'warning' as const },
 };
 
 function ChangeItem({ entry, typeLabel, onRevert }: { entry: ChangeEntry; typeLabel: string; onRevert: () => void }) {
   const actionConfig = ACTION_CONFIG[entry.action];
 
   return (
-    <div className="flex items-center gap-3 py-3 px-3 bg-white rounded-md border border-gray-200 hover:border-gray-300 transition-colors">
+    <div className="flex items-center gap-3 py-3 px-3 bg-surface rounded-[var(--radius-button)] border border-border hover:border-primary/20 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600">
-            {typeLabel}
-          </span>
-          <p className="min-w-0 truncate text-sm font-medium text-gray-800">{entry.name}</p>
+          <Badge variant="muted">{typeLabel}</Badge>
+          <p className="min-w-0 truncate text-sm font-medium text-foreground">{entry.name}</p>
         </div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted">
           <span>{new Date(entry.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-          {entry.entity === 'review' && entry.shopName && (
-            <span className="truncate">关联：{entry.shopName}</span>
-          )}
+          {entry.entity === 'review' && entry.shopName && <span className="truncate">关联：{entry.shopName}</span>}
         </div>
       </div>
-      <span className={`shrink-0 px-2 py-0.5 rounded-full border text-xs font-medium ${actionConfig.color}`}>
-        {actionConfig.label}
-      </span>
+      <Badge variant={actionConfig.variant}>{actionConfig.label}</Badge>
       {entry.status === 'draft' && (
-        <button
-          onClick={onRevert}
-          className="shrink-0 px-2.5 py-1 text-xs font-medium text-gray-500 rounded-md hover:bg-red-50 hover:text-red-600 transition-colors"
-        >
+        <Button variant="ghost" size="sm" onClick={onRevert} className="text-muted hover:text-red-600 hover:bg-red-50">
           回退
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -65,7 +61,6 @@ function buildTree(changes: ChangeEntry[]): TreeGroup[] {
       if (updatedAt > existing.updatedAt) existing.updatedAt = updatedAt;
       return existing;
     }
-
     const group: TreeGroup = { id, name, status, updatedAt, reviews: [] };
     groups.set(id, group);
     return group;
@@ -98,34 +93,28 @@ function ChangeGroup({ group, onRequestRevert }: { group: TreeGroup; onRequestRe
   const hasDraft = group.shopChange?.status === 'draft' || group.reviews.some((review) => review.status === 'draft');
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <Card className="overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-primary-muted/30 transition-colors"
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xs font-semibold text-gray-600">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-button)] bg-primary-muted text-xs font-semibold text-primary">
           店
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-gray-900">{group.name}</p>
-            {hasDraft && (
-              <span className="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">
-                可提交
-              </span>
-            )}
+            <p className="truncate text-sm font-semibold text-foreground">{group.name}</p>
+            {hasDraft && <Badge variant="success">可提交</Badge>}
           </div>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <p className="mt-0.5 text-xs text-muted">
             {itemCount} 条变更 · {group.shopChange ? '含店铺资料' : '仅点评记录'}
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-          {group.reviews.length ? `${group.reviews.length} 评` : '无点评'}
-        </span>
+        <Badge variant="muted">{group.reviews.length ? `${group.reviews.length} 评` : '无点评'}</Badge>
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={cn('h-4 w-4 shrink-0 text-muted transition-transform', open && 'rotate-180')}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -136,17 +125,16 @@ function ChangeGroup({ group, onRequestRevert }: { group: TreeGroup; onRequestRe
       </button>
 
       {open && (
-        <div className="space-y-2 border-t border-gray-100 bg-gray-50/60 p-3">
+        <div className="space-y-2 border-t border-border bg-background/60 p-3">
           {group.shopChange && (
             <section>
-              <p className="mb-2 px-1 text-xs font-medium text-gray-500">店铺资料</p>
+              <p className="mb-2 px-1 text-xs font-medium text-muted">店铺资料</p>
               <ChangeItem entry={group.shopChange} typeLabel="资料" onRevert={() => onRequestRevert(group.shopChange!)} />
             </section>
           )}
-
           {group.reviews.length > 0 && (
             <section>
-              <p className="mb-2 px-1 text-xs font-medium text-gray-500">点评记录</p>
+              <p className="mb-2 px-1 text-xs font-medium text-muted">点评记录</p>
               <div className="space-y-2">
                 {group.reviews.map((review) => (
                   <ChangeItem key={review.id} entry={review} typeLabel="点评" onRevert={() => onRequestRevert(review)} />
@@ -156,13 +144,12 @@ function ChangeGroup({ group, onRequestRevert }: { group: TreeGroup; onRequestRe
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 function ChangeTree({ changes, onRequestRevert }: { changes: ChangeEntry[]; onRequestRevert: (entry: ChangeEntry) => void }) {
   const groups = useMemo(() => buildTree(changes), [changes]);
-
   return (
     <div className="space-y-3">
       {groups.map((group) => (
@@ -188,21 +175,24 @@ export default function ChangeList() {
   if (changes === undefined) {
     return (
       <div className="flex items-center justify-center py-14">
-        <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-200 border-t-gray-700" />
-        <span className="ml-3 text-gray-400 text-sm">加载中</span>
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-border border-t-primary" />
+        <span className="ml-3 text-muted text-sm">加载中</span>
       </div>
     );
   }
 
   if (changes.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400 border border-dashed border-gray-200 rounded-lg bg-gray-50/60">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p className="text-sm font-medium text-gray-500">暂无变更</p>
-        <p className="text-xs mt-1">本机没有等待提交或审核的内容</p>
-      </div>
+      <EmptyState
+        icon={
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        }
+        title="暂无变更"
+        description="本机没有等待提交或审核的内容"
+        className="border border-dashed border-border rounded-[var(--radius-card)] bg-background/60 py-20"
+      />
     );
   }
 
@@ -214,8 +204,8 @@ export default function ChangeList() {
       {drafts.length > 0 && (
         <div>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-700">未提交</h3>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">{drafts.length}</span>
+            <h3 className="text-sm font-semibold text-foreground">未提交</h3>
+            <Badge variant="muted">{drafts.length}</Badge>
           </div>
           <ChangeTree changes={drafts} onRequestRevert={handleRequestRevert} />
         </div>
@@ -224,12 +214,13 @@ export default function ChangeList() {
       {pendings.length > 0 && (
         <div>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-700">审核中</h3>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">{pendings.length}</span>
+            <h3 className="text-sm font-semibold text-foreground">审核中</h3>
+            <Badge variant="muted">{pendings.length}</Badge>
           </div>
           <ChangeTree changes={pendings} onRequestRevert={handleRequestRevert} />
         </div>
       )}
+
       <ConfirmDialog
         open={!!confirmState}
         title="回退变更"
