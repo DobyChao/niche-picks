@@ -114,9 +114,11 @@ interface MapViewProps {
   onShopSelect?: (shop: MergedShop) => void;
   onEditShop?: (shop: MergedShop) => void;
   repickMode?: boolean;
+  repickShopName?: string;
+  onCancelRepick?: () => void;
 }
 
-export default function MapView({ shops, onMapActionAddShop, flyToShop, selectedShopId, onShopSelect, onEditShop, repickMode }: MapViewProps) {
+export default function MapView({ shops, onMapActionAddShop, flyToShop, selectedShopId, onShopSelect, onEditShop, repickMode, repickShopName, onCancelRepick }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -141,6 +143,13 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   const [cityMode, setCityMode] = useState<'auto' | 'manual'>('auto');
   const [showCityPicker, setShowCityPicker] = useState(false);
   const lastGeocodeCenterRef = useRef<{ lng: number; lat: number } | null>(null);
+
+  // Auto-open search when entering re-pick mode
+  useEffect(() => {
+    if (repickMode) {
+      setShowSearch(true);
+    }
+  }, [repickMode]);
 
   // Reverse geocode when action menu position changes (only if no address yet)
   useEffect(() => {
@@ -401,10 +410,10 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   // Handle POI selection from search dropdown
   const handlePoiSelect = useCallback((poi: PoiResult) => {
     if (!mapInstanceRef.current || !poi.lng || !poi.lat) return;
-    setShowSearch(false);
+    if (!repickMode) setShowSearch(false);
 
-    // Local shop → select directly
-    if (poi.isLocalShop && poi.shopId) {
+    // Local shop → select directly (skip in re-pick mode — user is choosing a location)
+    if (!repickMode && poi.isLocalShop && poi.shopId) {
       const shop = shops.find(s => s.id === poi.shopId);
       if (shop) {
         mapInstanceRef.current.setZoomAndCenter(16, [poi.lng, poi.lat], false, 300);
@@ -414,14 +423,18 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     }
 
     showPoiActionMenu(poi);
-  }, [showPoiActionMenu, shops, onShopSelect]);
+  }, [showPoiActionMenu, shops, onShopSelect, repickMode]);
 
   // Clean up POI markers when search closes
   const handleCloseSearch = useCallback(() => {
+    if (repickMode) {
+      onCancelRepick?.();
+      return;
+    }
     setShowSearch(false);
     poiMarkersRef.current.forEach((m) => m?.setMap?.(null));
     poiMarkersRef.current = [];
-  }, []);
+  }, [repickMode, onCancelRepick]);
 
   // Calculate nearby shops when action menu position changes
   const nearbyShops = useMemo(() => {
@@ -835,14 +848,27 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     <div className="w-full h-full rounded-lg overflow-hidden relative" style={{ minHeight: '300px' }}>
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Re-pick mode hint banner */}
+      {/* Re-pick mode hint — below search box */}
       {repickMode && mapLoaded && (
-        <div className="absolute top-3 left-3 right-3 sm:right-auto bg-blue-600 text-white text-sm px-4 py-2 rounded-lg shadow-md z-20 flex items-center gap-2">
-          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          点击地图选取新位置
+        <div className="absolute top-[4.25rem] left-3 right-3 sm:right-auto sm:max-w-[380px] z-20 bg-primary text-white text-sm px-3 py-2 rounded-[var(--radius-card)] shadow-[var(--shadow-elevated)] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="truncate">
+              {repickShopName ? `为「${repickShopName}」选取新位置` : '点击地图选取新位置'}
+            </span>
+          </div>
+          {onCancelRepick && (
+            <button
+              type="button"
+              onClick={onCancelRepick}
+              className="shrink-0 px-2 py-0.5 text-xs bg-white/20 hover:bg-white/30 rounded-[var(--radius-button)] transition-colors"
+            >
+              取消
+            </button>
+          )}
         </div>
       )}
 
@@ -872,10 +898,11 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
         onCitySelect={handleCitySelect}
         onAutoMode={handleAutoMode}
         onCloseCityPicker={() => setShowCityPicker(false)}
+        placeholder={repickMode ? '搜索地点以选取新位置...' : '搜索地点...'}
       />
 
       {/* Locate me button */}
-      {mapLoaded && !repickMode && (
+      {mapLoaded && (
         <button
           onClick={handleLocateMe}
           disabled={locating}
@@ -916,6 +943,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
             const shop = shops.find(s => s.id === shopId);
             if (shop) onShopSelect?.(shop);
           }}
+          mode={repickMode ? 'repick' : 'add'}
         />
       )}
 

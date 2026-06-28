@@ -21,9 +21,10 @@ interface MapActionMenuProps {
   onClose: () => void;
   nearbyShops?: NearbyShop[];
   onShopSelect?: (shopId: string) => void;
+  mode?: 'add' | 'repick';
 }
 
-export default function MapActionMenu({ x, y, lng, lat, address, addressLoading, onAddShop, onClose, nearbyShops, onShopSelect }: MapActionMenuProps) {
+export default function MapActionMenu({ x, y, lng, lat, address, addressLoading, onAddShop, onClose, nearbyShops, onShopSelect, mode = 'add' }: MapActionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showNearby, setShowNearby] = useState(false);
 
@@ -57,7 +58,8 @@ export default function MapActionMenu({ x, y, lng, lat, address, addressLoading,
     if (top < 0) top = 10;
   }
 
-  const hasNearby = nearbyShops && nearbyShops.length > 0;
+  const isRepick = mode === 'repick';
+  const hasNearby = !isRepick && nearbyShops && nearbyShops.length > 0;
 
   const menuItemClass = (enabled = true) =>
     cn(
@@ -72,11 +74,13 @@ export default function MapActionMenu({ x, y, lng, lat, address, addressLoading,
       style={{ left, top, ...(isMobile ? { width: 'calc(100vw - 32px)' } : {}) }}
     >
       <button onClick={handleAddShop} className={menuItemClass()}>
-        在这里添加店铺
+        {isRepick ? '确认选取此位置' : '在这里添加店铺'}
       </button>
-      <button onClick={() => setShowNearby(!showNearby)} className={menuItemClass(!!hasNearby)}>
-        显示附近店铺
-      </button>
+      {!isRepick && (
+        <button onClick={() => setShowNearby(!showNearby)} className={menuItemClass(!!hasNearby)}>
+          显示附近店铺
+        </button>
+      )}
       {showNearby && (
         <div className="border-t border-border mt-1 pt-1">
           {hasNearby ? (

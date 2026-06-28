@@ -29,12 +29,14 @@ interface MapSearchBoxProps {
   onCitySelect: (city: string, center: [number, number]) => void;
   onAutoMode: () => void;
   onCloseCityPicker: () => void;
+  placeholder?: string;
 }
 
 export default function MapSearchBox({
   visible, onSearch, onPoiSelect, onClose,
   currentCity, isAutoCity, showCityPicker,
   onToggleCityPicker, onCitySelect, onAutoMode, onCloseCityPicker,
+  placeholder = '搜索地点...',
 }: MapSearchBoxProps) {
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<PoiResult[]>([]);
@@ -106,7 +108,7 @@ export default function MapSearchBox({
             type="text"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索地点..."
+            placeholder={placeholder}
             className="flex-1 mx-2 py-1 text-sm outline-none bg-transparent text-foreground placeholder:text-muted/70"
           />
 

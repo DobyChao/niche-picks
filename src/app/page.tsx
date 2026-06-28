@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import ShopList from '@/components/shop/ShopList';
 import ShopForm from '@/components/shop/ShopForm';
@@ -21,7 +21,7 @@ const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false }
 export default function HomePage() {
   const [showShopForm, setShowShopForm] = useState(false);
   const [editingShop, setEditingShop] = useState<MergedShop | undefined>(undefined);
-  const [selectedShop, setSelectedShop] = useState<MergedShop | null>(null);
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [editingReview, setEditingReview] = useState<MergedReview | undefined>(undefined);
   const [flyToShop, setFlyToShop] = useState<MergedShop | null>(null);
@@ -51,6 +51,13 @@ export default function HomePage() {
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ startPos: number; startSize: number; pointerId: number; moved: boolean } | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+
+  const shops = useMergedShops();
+  const selectedShop = useMemo(
+    () => (selectedShopId && shops ? shops.find((s) => s.id === selectedShopId) ?? null : null),
+    [selectedShopId, shops],
+  );
+  const shopReviews = useMergedReviews(selectedShopId ?? undefined);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 768px)');
@@ -150,10 +157,7 @@ export default function HomePage() {
     setShowOriginalShop(false);
     setReviewOriginalIds(new Set());
     setOriginalReviewData(new Map());
-  }, [selectedShop?.id]);
-
-  const shops = useMergedShops();
-  const shopReviews = useMergedReviews(selectedShop?.id);
+  }, [selectedShopId]);
 
   const handleShopSaved = useCallback(() => {
     setShowShopForm(false);
@@ -164,7 +168,7 @@ export default function HomePage() {
   }, []);
 
   const handleShopClick = useCallback((shop: MergedShop) => {
-    setSelectedShop(shop);
+    setSelectedShopId(shop.id);
     setEditingReview(undefined);
     setShowReviewForm(false);
     setFlyToShop(shop);
@@ -210,7 +214,19 @@ export default function HomePage() {
     setRepickEditingShop(editingShop);
     setShowShopForm(false);
     setRepickMode(true);
+    if (typeof editingShop.lng === 'number' && typeof editingShop.lat === 'number') {
+      setFlyToShop(editingShop);
+    }
   }, [editingShop]);
+
+  const handleCancelRepick = useCallback(() => {
+    if (repickEditingShop) {
+      setEditingShop(repickEditingShop);
+      setShowShopForm(true);
+    }
+    setRepickMode(false);
+    setRepickEditingShop(null);
+  }, [repickEditingShop]);
 
   const handleOpenShopForm = useCallback(() => {
     setEditingShop(undefined);
@@ -231,7 +247,7 @@ export default function HomePage() {
       onConfirm: async () => {
         setConfirmState(null);
         await deleteShop(shop.id);
-        setSelectedShop(null);
+        setSelectedShopId(null);
         setShowReviewForm(false);
       },
     });
@@ -285,8 +301,10 @@ export default function HomePage() {
           shops={shops ?? []}
           onMapActionAddShop={handleMapActionAddShop}
           flyToShop={flyToShop}
-          selectedShopId={selectedShop?.id ?? null}
+          selectedShopId={selectedShopId}
           repickMode={repickMode}
+          repickShopName={repickEditingShop?.name}
+          onCancelRepick={handleCancelRepick}
           onShopSelect={(shop) => handleShopClick(shop)}
           onEditShop={(shop) => handleOpenEditShop(shop)}
         />
@@ -362,7 +380,7 @@ export default function HomePage() {
               {selectedShop ? (
                 <>
                   <Button variant="ghost" size="sm" onClick={() => {
-                      setSelectedShop(null);
+                      setSelectedShopId(null);
                       setFlyToShop(null);
                       setShowReviewForm(false);
                     }}>
