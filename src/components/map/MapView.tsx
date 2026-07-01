@@ -6,6 +6,7 @@ import { getCategoryColor } from '@/lib/utils';
 import MapActionMenu from './MapActionMenu';
 import MapSearchBox, { type PoiResult } from './MapSearchBox';
 import { guardAmapCallback, AMAP_CALLBACK_TIMEOUT_MS } from '@/lib/amap-guard';
+import { wgs84ToGcj02 } from '@/lib/geo';
 
 function haversineDistance(lng1: number, lat1: number, lng2: number, lat2: number): number {
   const R = 6371000;
@@ -570,25 +571,10 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        // WGS-84 → GCJ-02
-        AMap.convertFrom(
-          [pos.coords.longitude, pos.coords.latitude],
-          'gps',
-          guardAmapCallback(
-            AMAP_CALLBACK_TIMEOUT_MS,
-            (cStatus: string, cResult: any) => {
-              if (cStatus === 'complete' && cResult?.locations?.[0]) {
-                const loc = cResult.locations[0];
-                placeMarker(loc.lng, loc.lat);
-              } else {
-                placeMarker(pos.coords.longitude, pos.coords.latitude);
-              }
-            },
-            () => {
-              placeMarker(pos.coords.longitude, pos.coords.latitude);
-            },
-          ),
-        );
+        // WGS-84 → GCJ-02, computed locally — no network round-trip, so it can never
+        // time out and fall back to placing the marker at raw (uncorrected) coordinates.
+        const [gcjLng, gcjLat] = wgs84ToGcj02(pos.coords.longitude, pos.coords.latitude);
+        placeMarker(gcjLng, gcjLat);
       },
       () => {
         fallbackIpLocation();
