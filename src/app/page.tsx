@@ -15,6 +15,12 @@ import { Card } from '@/components/ui/Card';
 import StarRating from '@/components/ui/StarRating';
 import Modal from '@/components/ui/Modal';
 import { cn } from '@/lib/cn';
+import {
+  createAnchor,
+  loadSortAnchor,
+  saveSortAnchor,
+  type SortAnchor,
+} from '@/lib/shop-list-prefs';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
 
@@ -43,6 +49,7 @@ export default function HomePage() {
   const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const [isPulling, setIsPulling] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
+  const [sortAnchor, setSortAnchorState] = useState<SortAnchor | null>(null);
 
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(420);
@@ -58,6 +65,10 @@ export default function HomePage() {
     [selectedShopId, shops],
   );
   const shopReviews = useMergedReviews(selectedShopId ?? undefined);
+
+  useEffect(() => {
+    setSortAnchorState(loadSortAnchor());
+  }, []);
 
   useEffect(() => {
     const mql = window.matchMedia('(min-width: 768px)');
@@ -287,6 +298,16 @@ export default function HomePage() {
 
   const renderStars = (rating: number) => <StarRating rating={rating} />;
 
+  const handleSortAnchorChange = useCallback((anchor: SortAnchor | null) => {
+    setSortAnchorState(anchor);
+    saveSortAnchor(anchor);
+  }, []);
+
+  const handleSetSelectedShopAsAnchor = useCallback(() => {
+    if (!selectedShop || typeof selectedShop.lng !== 'number' || typeof selectedShop.lat !== 'number') return;
+    handleSortAnchorChange(createAnchor('shop', selectedShop.lng, selectedShop.lat, selectedShop.name, selectedShop.id));
+  }, [selectedShop, handleSortAnchorChange]);
+
   return (
     <div className="flex flex-col md:flex-row flex-1 min-h-0 h-full relative">
       {/* Map */}
@@ -307,6 +328,8 @@ export default function HomePage() {
           onCancelRepick={handleCancelRepick}
           onShopSelect={(shop) => handleShopClick(shop)}
           onEditShop={(shop) => handleOpenEditShop(shop)}
+          sortAnchor={sortAnchor}
+          onSortAnchorChange={handleSortAnchorChange}
         />
       </div>
 
@@ -429,9 +452,22 @@ export default function HomePage() {
               <div className="p-4 space-y-4">
                 {/* Shop name (title) + rating summary */}
                 <div>
-                  <h1 className="text-xl font-bold text-foreground break-words leading-snug">
-                    {selectedShop.name}
-                  </h1>
+                  <div className="flex items-start justify-between gap-2">
+                    <h1 className="text-xl font-bold text-foreground break-words leading-snug flex-1 min-w-0">
+                      {selectedShop.name}
+                    </h1>
+                    {typeof selectedShop.lng === 'number' && typeof selectedShop.lat === 'number' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleSetSelectedShopAsAnchor}
+                        className="shrink-0 text-xs"
+                        title="设为距离排序锚点"
+                      >
+                        设为锚点
+                      </Button>
+                    )}
+                  </div>
                   {selectedShop.reviewCount > 0 && (
                     <div className="mt-1 flex items-center gap-2 text-sm">
                       {renderStars(selectedShop.avgRating ?? 0)}
@@ -594,7 +630,11 @@ export default function HomePage() {
                 </div>
               </div>
             ) : (
-              <ShopList onShopClick={handleShopClick} />
+              <ShopList
+                onShopClick={handleShopClick}
+                selectedShopId={selectedShopId}
+                sortAnchor={sortAnchor}
+              />
             )}
           </div>
         </div>

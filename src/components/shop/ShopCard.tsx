@@ -6,11 +6,13 @@ import Badge from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import StarRating from '@/components/ui/StarRating';
 import { cn } from '@/lib/cn';
+import { formatDistance } from '@/lib/geo';
 
 interface ShopCardProps {
   shop: MergedShop;
   onClick?: () => void;
   selected?: boolean;
+  distanceMeters?: number | null;
 }
 
 function getSyncBadge(badge: SyncBadge) {
@@ -24,7 +26,7 @@ function getSyncBadge(badge: SyncBadge) {
   }
 }
 
-export default function ShopCard({ shop, onClick, selected }: ShopCardProps) {
+export default function ShopCard({ shop, onClick, selected, distanceMeters }: ShopCardProps) {
   const syncBadge = getSyncBadge(shop._syncBadge);
   const catColor = getCategoryColor(shop.category);
 
@@ -47,17 +49,22 @@ export default function ShopCard({ shop, onClick, selected }: ShopCardProps) {
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-foreground text-base leading-snug truncate">
+        <h3 className="font-semibold text-foreground text-base leading-snug truncate flex-1 min-w-0">
           {shop.name}
         </h3>
-        {shop.category && (
-          <span
-            className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
-            style={{ backgroundColor: catColor }}
-          >
-            {shop.category}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {distanceMeters != null && (
+            <span className="text-xs text-muted tabular-nums">{formatDistance(distanceMeters)}</span>
+          )}
+          {shop.category && (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              style={{ backgroundColor: catColor }}
+            >
+              {shop.category}
+            </span>
+          )}
+        </div>
       </div>
 
       {shop.reviewCount > 0 && (

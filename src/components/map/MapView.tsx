@@ -6,16 +6,25 @@ import { getCategoryColor } from '@/lib/utils';
 import MapActionMenu from './MapActionMenu';
 import MapSearchBox, { type PoiResult } from './MapSearchBox';
 import { guardAmapCallback, AMAP_CALLBACK_TIMEOUT_MS } from '@/lib/amap-guard';
-import { wgs84ToGcj02 } from '@/lib/geo';
+import { haversineDistance, wgs84ToGcj02 } from '@/lib/geo';
+import { cn } from '@/lib/cn';
+import { createAnchor, type SortAnchor } from '@/lib/shop-list-prefs';
 
-function haversineDistance(lng1: number, lat1: number, lng2: number, lat2: number): number {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function MenuItem({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full text-left px-3 py-2 text-sm transition-colors',
+        danger
+          ? 'text-red-600 hover:bg-red-50'
+          : 'text-foreground hover:bg-primary-muted/50',
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 function getSearchRadius(zoom: number): number {
@@ -121,9 +130,11 @@ interface MapViewProps {
   repickMode?: boolean;
   repickShopName?: string;
   onCancelRepick?: () => void;
+  sortAnchor?: SortAnchor | null;
+  onSortAnchorChange?: (anchor: SortAnchor | null) => void;
 }
 
-export default function MapView({ shops, onMapActionAddShop, flyToShop, selectedShopId, onShopSelect, onEditShop, repickMode, repickShopName, onCancelRepick }: MapViewProps) {
+export default function MapView({ shops, onMapActionAddShop, flyToShop, selectedShopId, onShopSelect, onEditShop, repickMode, repickShopName, onCancelRepick, sortAnchor, onSortAnchorChange }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -151,6 +162,14 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
   const amapWaitIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cityGeocodeInFlightRef = useRef(false);
   const locateWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorMarkerRef = useRef<any>(null);
+  const onSortAnchorChangeRef = useRef(onSortAnchorChange);
+  onSortAnchorChangeRef.current = onSortAnchorChange;
+  const [showAnchorMenu, setShowAnchorMenu] = useState(false);
+  const [anchorPicking, setAnchorPicking] = useState(false);
+  const anchorLocatePendingRef = useRef(false);
+  const anchorPickingRef = useRef(false);
+  useEffect(() => { anchorPickingRef.current = anchorPicking; }, [anchorPicking]);
 
   // Auto-open search when entering re-pick mode
   useEffect(() => {
@@ -274,8 +293,11 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
 
   // Unified search: keyword → city-wide search(), empty → searchNearBy()
   const handleSearch = useCallback((keyword: string, callback: (results: PoiResult[]) => void) => {
-    const center = mapInstanceRef.current?.getCenter();
-    const localResults = searchLocalShops(keyword, center);
+    // Anchor takes priority as the search center; fall back to current map center.
+    const anchor = sortAnchor && typeof sortAnchor.lng === 'number' && typeof sortAnchor.lat === 'number'
+      ? { lng: sortAnchor.lng, lat: sortAnchor.lat }
+      : mapInstanceRef.current?.getCenter();
+    const localResults = searchLocalShops(keyword, anchor);
 
     if (!placeSearchRef.current) {
       localResults.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
@@ -298,8 +320,8 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
             amapPoiId: poi.id || undefined,
             distance: typeof poi.distance === 'number'
               ? poi.distance
-              : (center && poi.location)
-                ? haversineDistance(center.lng, center.lat, poi.location.lng, poi.location.lat)
+              : (anchor && poi.location)
+                ? haversineDistance(anchor.lng, anchor.lat, poi.location.lng, poi.location.lat)
                 : undefined,
           }))
         : [];
@@ -321,15 +343,15 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     if (keyword.trim()) {
       // Keyword search: city-wide (setCity already scoping), always finds matches
       placeSearchRef.current.search(keyword, searchCallback);
-    } else if (center) {
-      // Empty keyword: browse nearby POIs around map center
+    } else if (anchor) {
+      // Empty keyword: browse nearby POIs around anchor (or map center fallback)
       const zoom = mapInstanceRef.current.getZoom();
       const radius = getSearchRadius(zoom);
-      placeSearchRef.current.searchNearBy('', new AMap.LngLat(center.lng, center.lat), radius, searchCallback);
+      placeSearchRef.current.searchNearBy('', new AMap.LngLat(anchor.lng, anchor.lat), radius, searchCallback);
     } else {
       callback(localResults);
     }
-  }, [searchLocalShops]);
+  }, [searchLocalShops, sortAnchor]);
 
   const handleCitySelect = useCallback((city: string, center: [number, number]) => {
     setCityMode('manual');
@@ -522,6 +544,10 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
 
     function placeMarker(lng: number, lat: number) {
       finishLocate();
+      if (anchorLocatePendingRef.current) {
+        anchorLocatePendingRef.current = false;
+        onSortAnchorChangeRef.current?.(createAnchor('location', lng, lat, '我的位置'));
+      }
       mapInstanceRef.current.setZoomAndCenter(16, [lng, lat], false, 500);
       if (locationMarkerRef.current) {
         locationMarkerRef.current.setPosition([lng, lat]);
@@ -582,6 +608,56 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
     );
   }, [locating, clearLocateWatchdog]);
+
+  // ---- Anchor management (resident map button) ----
+  const setAnchorFromLocation = useCallback(() => {
+    setShowAnchorMenu(false);
+    // Reuse the locate flow; placeMarker() checks this one-shot flag and turns
+    // the result into an anchor instead of (or in addition to) just centering the map.
+    anchorLocatePendingRef.current = true;
+    setLocating(true);
+    setLocateError('');
+    handleLocateMe();
+  }, [handleLocateMe]);
+
+  const setAnchorFromMapCenter = useCallback(() => {
+    setShowAnchorMenu(false);
+    const center = mapInstanceRef.current?.getCenter();
+    if (!center) return;
+    onSortAnchorChangeRef.current?.(createAnchor('map_center', center.lng, center.lat, '地图中心'));
+  }, []);
+
+  const startAnchorPick = useCallback(() => {
+    setShowAnchorMenu(false);
+    setAnchorPicking(true);
+  }, []);
+
+  const clearAnchor = useCallback(() => {
+    setShowAnchorMenu(false);
+    onSortAnchorChangeRef.current?.(null);
+  }, []);
+
+  const flyToAnchor = useCallback(() => {
+    setShowAnchorMenu(false);
+    if (!sortAnchor || !mapInstanceRef.current) return;
+    mapInstanceRef.current.setZoomAndCenter(16, [sortAnchor.lng, sortAnchor.lat], false, 300);
+  }, [sortAnchor]);
+
+  // Auto-dismiss anchor menu on outside click
+  const anchorMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showAnchorMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (anchorMenuRef.current && !anchorMenuRef.current.contains(e.target as Node)) {
+        setShowAnchorMenu(false);
+      }
+    }
+    const timer = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClick);
+    };
+  }, [showAnchorMenu]);
 
   // Auto-dismiss locate error after 3s
   useEffect(() => {
@@ -812,6 +888,12 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       mapInstanceRef.current.on('click', (e: any) => {
         const { lng, lat } = e.lnglat;
         const { x, y } = e.pixel;
+        if (anchorPickingRef.current) {
+          anchorPickingRef.current = false;
+          setAnchorPicking(false);
+          onSortAnchorChangeRef.current?.(createAnchor('manual', lng, lat, '手动选取'));
+          return;
+        }
         setActionAddress('');
         setActionMenu({ x, y, lng, lat });
         infoWindowRef.current?.close();
@@ -840,6 +922,8 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       poiMarkersRef.current = [];
       pickMarkerRef.current?.setMap?.(null);
       locationMarkerRef.current?.setMap?.(null);
+      anchorMarkerRef.current?.setMap?.(null);
+      anchorMarkerRef.current = null;
       infoWindowRef.current?.close?.();
       mapInstanceRef.current?.destroy?.();
     };
@@ -932,6 +1016,36 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
     mapInstanceRef.current.setZoomAndCenter(16, [flyToShop.lng, flyToShop.lat], false, 300);
   }, [flyToShop]);
 
+  // Render / update / remove the distance-sort anchor marker
+  useEffect(() => {
+    if (!mapLoaded || !mapInstanceRef.current) return;
+    const AMap = (window as any).AMap;
+    if (!AMap) return;
+
+    if (sortAnchor && typeof sortAnchor.lng === 'number' && typeof sortAnchor.lat === 'number') {
+      const pos: [number, number] = [sortAnchor.lng, sortAnchor.lat];
+      if (anchorMarkerRef.current) {
+        anchorMarkerRef.current.setPosition(pos);
+        anchorMarkerRef.current.setLabel({ content: `锚点 · ${sortAnchor.label}`, direction: 'top' });
+      } else {
+        anchorMarkerRef.current = new AMap.Marker({
+          position: pos,
+          zIndex: 250,
+          offset: new AMap.Pixel(-12, -12),
+          content: `<div style="position:relative;width:24px;height:24px">
+            <div style="position:absolute;inset:0;background:rgba(196,101,58,0.25);border-radius:50%"></div>
+            <div style="position:absolute;inset:5px;background:#c4653a;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700">★</div>
+          </div>`,
+          label: { content: `锚点 · ${sortAnchor.label}`, direction: 'top' },
+        });
+        anchorMarkerRef.current.setMap(mapInstanceRef.current);
+      }
+    } else if (anchorMarkerRef.current) {
+      anchorMarkerRef.current.setMap(null);
+      anchorMarkerRef.current = null;
+    }
+  }, [sortAnchor, mapLoaded]);
+
   return (
     <div className="w-full h-full rounded-lg overflow-hidden relative" style={{ minHeight: '300px' }}>
       <div ref={containerRef} className="w-full h-full" />
@@ -1011,8 +1125,73 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
 
       {/* Locate error toast */}
       {locateError && (
-        <div className="absolute bottom-16 right-4 z-20 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg shadow-md max-w-[200px]">
+        <div className="absolute bottom-28 right-4 z-20 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg shadow-md max-w-[200px]">
           {locateError}
+        </div>
+      )}
+
+      {/* Anchor (distance sort center) resident button */}
+      {mapLoaded && (
+        <div ref={anchorMenuRef} className="absolute bottom-16 right-4 z-20">
+          <button
+            onClick={() => { setShowAnchorMenu((v) => !v); setAnchorPicking(false); }}
+            className={cn(
+              'w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-colors border',
+              sortAnchor
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white text-gray-600 border-transparent hover:bg-gray-50',
+            )}
+            aria-label="设置锚点"
+            title={sortAnchor ? `锚点：${sortAnchor.label}` : '设置距离锚点'}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21z" />
+            </svg>
+          </button>
+
+          {showAnchorMenu && (
+            <div className="absolute right-0 bottom-12 w-44 bg-surface border border-border rounded-[var(--radius-card)] shadow-[var(--shadow-elevated)] py-1 text-sm">
+              {sortAnchor ? (
+                <>
+                  <div className="px-3 py-2 border-b border-border/60">
+                    <div className="text-xs text-muted">当前锚点</div>
+                    <div className="text-foreground font-medium truncate">{sortAnchor.label}</div>
+                    <div className="text-[11px] text-muted/80 tabular-nums mt-0.5">
+                      {sortAnchor.lng.toFixed(4)}, {sortAnchor.lat.toFixed(4)}
+                    </div>
+                  </div>
+                  <MenuItem onClick={flyToAnchor}>飞到锚点</MenuItem>
+                  <MenuItem onClick={startAnchorPick}>手动选取</MenuItem>
+                  <MenuItem onClick={setAnchorFromLocation}>用我的位置</MenuItem>
+                  <MenuItem onClick={setAnchorFromMapCenter}>用地图中心</MenuItem>
+                  <MenuItem onClick={clearAnchor} danger>清除锚点</MenuItem>
+                </>
+              ) : (
+                <>
+                  <div className="px-3 py-2 border-b border-border/60 text-xs text-muted">
+                    设置距离排序与搜索的中心点
+                  </div>
+                  <MenuItem onClick={setAnchorFromLocation}>我的位置</MenuItem>
+                  <MenuItem onClick={setAnchorFromMapCenter}>地图中心</MenuItem>
+                  <MenuItem onClick={startAnchorPick}>手动选取</MenuItem>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual anchor pick hint */}
+      {anchorPicking && mapLoaded && (
+        <div className="absolute top-3 left-3 right-3 sm:right-auto sm:max-w-[380px] z-20 bg-primary text-white text-sm px-3 py-2 rounded-[var(--radius-card)] shadow-[var(--shadow-elevated)] flex items-center justify-between gap-2">
+          <span className="truncate">点击地图选取锚点位置</span>
+          <button
+            type="button"
+            onClick={() => setAnchorPicking(false)}
+            className="shrink-0 px-2 py-0.5 text-xs bg-white/20 hover:bg-white/30 rounded-[var(--radius-button)] transition-colors"
+          >
+            取消
+          </button>
         </div>
       )}
 

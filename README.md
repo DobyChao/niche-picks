@@ -34,11 +34,13 @@ npm run start
 
 - **Map-based shop browsing** — colored markers by category, InfoWindow with ratings
 - **City switcher** — AUTO mode detects city from map position, or manually pick a city
-- **POI search** — `searchNearBy` with dynamic radius based on zoom level, local shops merged into results
+- **POI search** — `searchNearBy` centered on the distance anchor (or map center when no anchor), dynamic radius based on zoom level, local shops merged into results
 - **Shop creation with suggestions** — name input auto-suggests nearby POIs, auto-fills address/category/phone
+- **Shop list filter & sort** — search, filter by category / sync status / review presence, and sort by recently updated / created / name / rating / distance; preferences persist to `localStorage`
+- **Distance anchor** — a resident map button (⚑) sets a persistent anchor via my location / map center / manual pick / selected shop; the anchor drives both distance sort and POI search center, shows a ★ marker on the map, and persists across sessions
 - **Offline-first sync** — dual-bucket architecture (server clones + local changes), admin approval workflow
 - **Review system** — ratings, price, comments with real-time aggregation
-- **Admin panel** — token management, approval queue for submitted changes
+- **Admin panel** — token management (normal / trusted roles), approval queue for submitted changes; trusted tokens auto-approve on push
 - **Responsive layout** — desktop two-column grid, mobile full-page scroll
 
 ## Project Structure
@@ -62,6 +64,8 @@ src/
     ├── db/index.ts         # Dexie schema, merge reads, CRUD
     ├── types/index.ts      # TypeScript interfaces
     ├── server/db.ts        # SQLite setup, migrations
+    ├── geo.ts              # haversine distance + formatting
+    ├── shop-list-prefs.ts  # shop list filter/sort/anchor logic + persistence
     └── sync/               # Client-side push/pull logic
 ```
 
