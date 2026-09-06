@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
-import { authenticateAdmin } from '@/lib/server/auth';
+import { authenticateAdmin, extractToken, clientIp, isAuthBlocked, recordAuthFailure } from '@/lib/server/auth';
 import type { UserTokenRole } from '@/lib/types';
 import crypto from 'crypto';
 
@@ -9,11 +9,19 @@ function normalizeRole(role: unknown): UserTokenRole | null {
   return null;
 }
 
+function authBlockedResponse() {
+  return NextResponse.json({ error: '尝试过于频繁，请稍后再试' }, { status: 429 });
+}
+
 // GET — list all user tokens
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const token = searchParams.get('token');
+    const ip = clientIp(req);
+    if (isAuthBlocked(ip)) {
+      return authBlockedResponse();
+    }
+
+    const token = extractToken(req);
 
     if (!token || typeof token !== 'string') {
       return NextResponse.json({ error: '管理员 token 不能为空' }, { status: 400 });
@@ -21,6 +29,7 @@ export async function GET(req: NextRequest) {
 
     const auth = authenticateAdmin(token);
     if (!auth.success) {
+      recordAuthFailure(ip);
       return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
     }
 
@@ -37,16 +46,19 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ tokens });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '获取失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] GET error:', err);
+    return NextResponse.json({ error: '获取失败' }, { status: 500 });
   }
 }
 
 // POST — generate a new user token
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIp(req);
+    if (isAuthBlocked(ip)) {
+      return authBlockedResponse();
+    }
+
     const body = await req.json();
     const { token, remark, role: roleInput } = body;
 
@@ -56,6 +68,7 @@ export async function POST(req: NextRequest) {
 
     const auth = authenticateAdmin(token);
     if (!auth.success) {
+      recordAuthFailure(ip);
       return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
     }
 
@@ -65,20 +78,23 @@ export async function POST(req: NextRequest) {
 
     db.prepare(
       'INSERT INTO user_tokens (token, nickname, createdAt, remark, role) VALUES (?, ?, ?, ?, ?)'
-    ).run(userToken, '', now, (remark || '').trim(), role);
+    ).run(userToken, '', now, String(remark || '').slice(0, 200), role);
 
     return NextResponse.json({ success: true, token: userToken, role });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '生成失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] POST error:', err);
+    return NextResponse.json({ error: '生成失败' }, { status: 500 });
   }
 }
 
 // PATCH — update token role
 export async function PATCH(req: NextRequest) {
   try {
+    const ip = clientIp(req);
+    if (isAuthBlocked(ip)) {
+      return authBlockedResponse();
+    }
+
     const body = await req.json();
     const { token, userToken, role: roleInput } = body;
 
@@ -96,6 +112,7 @@ export async function PATCH(req: NextRequest) {
 
     const auth = authenticateAdmin(token);
     if (!auth.success) {
+      recordAuthFailure(ip);
       return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
     }
 
@@ -106,16 +123,19 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, role });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '更新失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] PATCH error:', err);
+    return NextResponse.json({ error: '更新失败' }, { status: 500 });
   }
 }
 
 // DELETE — remove a user token
 export async function DELETE(req: NextRequest) {
   try {
+    const ip = clientIp(req);
+    if (isAuthBlocked(ip)) {
+      return authBlockedResponse();
+    }
+
     const body = await req.json();
     const { token, userToken } = body;
 
@@ -128,6 +148,7 @@ export async function DELETE(req: NextRequest) {
 
     const auth = authenticateAdmin(token);
     if (!auth.success) {
+      recordAuthFailure(ip);
       return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
     }
 
@@ -138,9 +159,7 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '删除失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] DELETE error:', err);
+    return NextResponse.json({ error: '删除失败' }, { status: 500 });
   }
 }

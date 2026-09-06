@@ -74,7 +74,9 @@ export default function AdminPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/admin/pending?token=${encodeURIComponent(token)}`);
+      const res = await fetch(`/api/admin/pending`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.message || '获取待审批列表失败');
@@ -93,7 +95,9 @@ export default function AdminPage() {
     if (!token) return;
     setLoadingTokens(true);
     try {
-      const res = await fetch(`/api/admin/generate-token?token=${encodeURIComponent(token)}`);
+      const res = await fetch(`/api/admin/generate-token`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '获取 Token 列表失败');
@@ -112,7 +116,9 @@ export default function AdminPage() {
     if (!token) return;
     setLoadingFeedbacks(true);
     try {
-      const res = await fetch(`/api/feedback?token=${encodeURIComponent(token)}`);
+      const res = await fetch(`/api/feedback`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) return;
       const data = await res.json();
       setFeedbackList(data.feedbacks || []);
