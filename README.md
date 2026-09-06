@@ -77,3 +77,18 @@ Running as a systemd service (`xiaozhong-review`) on port 8088 with nginx revers
 npm run build
 sudo systemctl restart xiaozhong-review
 ```
+
+### Security-relevant nginx settings
+
+The app's in-memory rate limiting and per-IP throttling derive the client IP from
+`X-Real-IP` / `X-Forwarded-For`. Make sure nginx sets them (otherwise all clients
+share one bucket and limits become stricter, not weaker):
+
+```nginx
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+API authentication prefers the `Authorization: Bearer <token>` header over the
+URL query parameter; the query fallback is deprecated (query strings end up in
+access logs and browser history) and will be removed in a future release.

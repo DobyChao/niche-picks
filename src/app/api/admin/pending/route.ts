@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
-import { authenticateAdmin } from '@/lib/server/auth';
+import { authenticateAdmin, extractToken, clientIp, isAuthBlocked, recordAuthFailure } from '@/lib/server/auth';
 import type { ChangeLogItem, PendingSync } from '@/lib/types';
 
 function buildSummary(changes: ChangeLogItem[]): string {
@@ -33,8 +33,12 @@ function buildSummary(changes: ChangeLogItem[]): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
+    const ip = clientIp(request);
+    if (isAuthBlocked(ip)) {
+      return NextResponse.json({ ok: false, error: '尝试过于频繁，请稍后再试' }, { status: 429 });
+    }
+
+    const token = extractToken(request);
 
     if (!token) {
       return NextResponse.json({ ok: false, error: '缺少 token' }, { status: 401 });
@@ -42,10 +46,11 @@ export async function GET(request: NextRequest) {
 
     const authResult = authenticateAdmin(token);
     if (!authResult.success) {
+      recordAuthFailure(ip);
       return NextResponse.json({ ok: false, error: '认证失败' }, { status: 401 });
     }
 
-    const statusFilter = searchParams.get('status') || 'pending';
+    const statusFilter = request.nextUrl.searchParams.get('status') || 'pending';
 
     if (!['pending', 'approved', 'rejected'].includes(statusFilter)) {
       return NextResponse.json({ ok: false, error: 'status 参数无效，可选: pending, approved, rejected' }, { status: 400 });

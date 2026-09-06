@@ -27,13 +27,20 @@ export function clearSyncIdentity() {
   localStorage.removeItem(SYNC_AUTHOR_KEY);
 }
 
+// Tokens must not travel in the URL — query strings are recorded in access
+// logs and browser history. POST endpoints keep the token in the body.
+export function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function validateSyncToken(token: string) {
   const res = await fetch(
-    `/api/sync/pull?token=${encodeURIComponent(token)}&since=9999-12-31T23:59:59.999Z`,
+    `/api/sync/pull?since=9999-12-31T23:59:59.999Z`,
+    { headers: authHeaders(token) },
   );
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok || data?.ok === false) {
-    throw new Error(data?.error || `Token 验证失败 (HTTP ${res.status})`);
+    throw new Error(data?.error || `Token 验证失败 (HTTP ${res.status})}`);
   }
 }

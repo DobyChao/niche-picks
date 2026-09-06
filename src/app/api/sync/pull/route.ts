@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
-import { authenticateUser } from '@/lib/server/auth';
+import { authenticateUser, extractToken, clientIp, isAuthBlocked, recordAuthFailure } from '@/lib/server/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
-    const since = searchParams.get('since') || '1970-01-01T00:00:00Z';
+    const ip = clientIp(request);
+    if (isAuthBlocked(ip)) {
+      return NextResponse.json({ ok: false, error: '尝试过于频繁，请稍后再试' }, { status: 429 });
+    }
+
+    const token = extractToken(request);
+    const since = request.nextUrl.searchParams.get('since') || '1970-01-01T00:00:00Z';
 
     if (!token) {
       return NextResponse.json({ ok: false, error: '缺少 token' }, { status: 401 });
@@ -14,6 +18,7 @@ export async function GET(request: NextRequest) {
 
     const authResult = authenticateUser(token);
     if (!authResult.success) {
+      recordAuthFailure(ip);
       return NextResponse.json({ ok: false, error: '认证失败' }, { status: 401 });
     }
 
