@@ -82,9 +82,8 @@ test.describe('小众点评 Basic E2E', () => {
     await page.getByRole('button', { name: '写点评' }).click();
     await expect(page.locator('#review-content')).toBeVisible();
 
-    // Fill review — click 4th star
-    const stars = page.locator('button >> text=★');
-    await stars.nth(3).click();
+    // Fill review — rating via slider (min=0, max=5, step=0.1)
+    await page.locator('input[type="range"]').fill('4');
     await page.fill('#review-content', '这家店环境不错，适合办公。');
     await page.fill('#review-author', '测试用户');
     await page.fill('#review-price', '60');
@@ -116,8 +115,7 @@ test.describe('小众点评 Basic E2E', () => {
     await page.getByRole('button', { name: '编辑店铺' }).click();
 
     // Modal with pre-filled form
-    const modal = page.locator('[class*="rounded-2xl"]');
-    await expect(modal.getByRole('heading', { name: '编辑店铺', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '编辑店铺', exact: true })).toBeVisible();
     await expect(page.locator('#shop-name')).toHaveValue('待编辑店铺');
 
     // Update

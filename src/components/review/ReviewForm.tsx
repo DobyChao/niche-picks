@@ -47,7 +47,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
 
   function validate(): FormErrors {
     const newErrors: FormErrors = {};
-    if (rating < 0.5 || rating > 5) newErrors.rating = '评分必须在 0.5-5 之间';
+    if (rating < 0 || rating > 5) newErrors.rating = '评分必须在 0-5 之间';
     if (!content.trim()) newErrors.content = '点评内容不能为空';
     return newErrors;
   }
@@ -105,7 +105,7 @@ export default function ReviewForm({ shopId, review, onSubmit, onCancel }: Revie
         </div>
         <input
           type="range"
-          min="1"
+          min="0"
           max="5"
           step="0.1"
           value={rating}

@@ -66,7 +66,10 @@ export async function pullRemoteData(userToken: string) {
   return { success: true, shopCount: shops.length, reviewCount: reviews.length };
 }
 
-export async function autoPullIfReady(): Promise<AutoPullResult> {
+const AUTO_PULL_THROTTLE_MS = 10_000;
+let lastAutoPullAt = 0;
+
+export async function autoPullIfReady(force = false): Promise<AutoPullResult> {
   if (typeof window === 'undefined') {
     return { status: 'skipped', reason: 'no-identity' };
   }
@@ -76,8 +79,13 @@ export async function autoPullIfReady(): Promise<AutoPullResult> {
     return { status: 'skipped', reason: 'no-identity' };
   }
 
+  if (!force && Date.now() - lastAutoPullAt < AUTO_PULL_THROTTLE_MS) {
+    return { status: 'skipped', reason: 'throttled' };
+  }
+
   try {
     const result = await pullRemoteData(token);
+    lastAutoPullAt = Date.now();
     return {
       status: 'success',
       shopCount: result.shopCount,

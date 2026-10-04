@@ -5,9 +5,11 @@ import dynamic from 'next/dynamic';
 import ShopList from '@/components/shop/ShopList';
 import ShopForm from '@/components/shop/ShopForm';
 import ReviewForm from '@/components/review/ReviewForm';
-import { useMergedShops, useMergedReviews, deleteShop, deleteReview, getOriginalShop, getOriginalReview } from '@/lib/db';
+import { useMergedShops, useMergedReviews, useAllChanges, deleteShop, deleteReview, getOriginalShop, getOriginalReview } from '@/lib/db';
 import type { MergedShop, MergedReview, ServerShop, ServerReview } from '@/lib/types';
 import { autoPullIfReady } from '@/lib/sync/pull';
+import { pushLocalChanges } from '@/lib/sync/push';
+import { getSavedSyncIdentity } from '@/lib/sync/auth';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -48,6 +50,7 @@ export default function HomePage() {
   const [repickEditingShop, setRepickEditingShop] = useState<MergedShop | null>(null);
   const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
   const [isPulling, setIsPulling] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
   const [sortAnchor, setSortAnchorState] = useState<SortAnchor | null>(null);
 
@@ -60,6 +63,8 @@ export default function HomePage() {
   const [isDesktop, setIsDesktop] = useState(false);
 
   const shops = useMergedShops();
+  const allChanges = useAllChanges();
+  const draftCount = allChanges?.filter((c) => c.status === 'draft').length ?? 0;
   const selectedShop = useMemo(
     () => (selectedShopId && shops ? shops.find((s) => s.id === selectedShopId) ?? null : null),
     [selectedShopId, shops],
@@ -106,6 +111,31 @@ export default function HomePage() {
       setIsPulling(false);
     }
   }, [isPulling]);
+
+  const handleQuickPush = useCallback(async () => {
+    if (isPushing || draftCount === 0) return;
+    const { token, authorName } = getSavedSyncIdentity();
+    if (!token) {
+      setPullMessage('未设置同步身份');
+      return;
+    }
+    setIsPushing(true);
+    try {
+      const result = await pushLocalChanges(token, authorName);
+      if (!('count' in result)) {
+        setPullMessage('没有需要同步的变更');
+        return;
+      }
+      setPullMessage(`已推送 ${result.count} 条变更`);
+      if (result.autoApproved) {
+        await autoPullIfReady(true);
+      }
+    } catch (err) {
+      setPullMessage(`推送失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    } finally {
+      setIsPushing(false);
+    }
+  }, [isPushing, draftCount]);
 
   const SIDEBAR_MIN = 280;
   const SIDEBAR_MAX = 600;
@@ -397,6 +427,22 @@ export default function HomePage() {
                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isPulling ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
+              </button>
+              <button
+                onClick={handleQuickPush}
+                disabled={isPushing || draftCount === 0}
+                className="relative p-2 text-muted hover:text-foreground hover:bg-primary-muted/50 rounded-[var(--radius-button)] transition-colors flex items-center justify-center disabled:opacity-50"
+                title={draftCount === 0 ? '没有待推送的变更' : '快捷推送'}
+                aria-label="快捷推送"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isPushing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21V9m0 0l-4 4m4-4l4 4M4 3h16" />
+                </svg>
+                {draftCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold flex items-center justify-center pointer-events-none">
+                    {draftCount > 99 ? '99+' : draftCount}
+                  </span>
+                )}
               </button>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
