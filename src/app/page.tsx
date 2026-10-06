@@ -401,11 +401,11 @@ export default function HomePage() {
         }
       >
         <div className={cn('h-full flex flex-col', isDesktop && 'border-l border-border')}>
-          {/* Mobile drag handle: dedicated full-width hot zone so resize keeps working
-              even when the toolbar below is packed edge-to-edge with buttons (detail mode). */}
+          {/* Mobile drag handle: compact grabber. The toolbar below still carries
+              a full-width blank-area drag zone for detail mode. */}
           {!isDesktop && (
             <div
-              className="flex-shrink-0 cursor-row-resize touch-none flex items-center justify-center py-2.5"
+              className="flex-shrink-0 cursor-row-resize touch-none flex items-center justify-center py-1"
               onPointerDown={handleMobilePointerDown}
               onPointerMove={handleMobilePointerMove}
               onPointerUp={handlePointerUp}
