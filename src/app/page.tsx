@@ -184,7 +184,7 @@ export default function HomePage() {
     setIsDragging(false);
   }, []);
 
-  // Ball tap (no drag movement) collapses the mobile panel.
+  // Handle tap (no drag movement) collapses the mobile panel.
   const handleMobileBallPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (dragRef.current && dragRef.current.pointerId === e.pointerId && !dragRef.current.moved) {
       setPanelCollapsed(true);
@@ -372,7 +372,7 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Mobile circular drag ball: sits on the map/panel boundary. Drag to resize,
+      {/* Mobile pill drag handle: sits on the map/panel boundary. Drag to resize,
           tap (no movement) to collapse the panel. Hidden on desktop and when collapsed. */}
       {!isDesktop && !panelCollapsed && (
         <div
@@ -393,11 +393,9 @@ export default function HomePage() {
           <div
             role="button"
             aria-label="拖动调整地图高度，点按折叠列表"
-            className="w-10 h-10 rounded-full bg-surface border border-border shadow-[var(--shadow-elevated)] flex items-center justify-center text-muted active:bg-primary-muted/50 active:scale-95 transition-colors cursor-row-resize select-none"
+            className="w-[4.5rem] h-6 rounded-full bg-surface border border-border shadow-[var(--shadow-elevated)] flex items-center justify-center text-muted active:bg-primary-muted/50 cursor-row-resize select-none"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4M8 15l4 4 4-4" />
-            </svg>
+            <span className="w-8 h-[2px] rounded-full bg-current pointer-events-none" />
           </div>
         </div>
       )}
