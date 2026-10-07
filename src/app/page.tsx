@@ -184,15 +184,6 @@ export default function HomePage() {
     setIsDragging(false);
   }, []);
 
-  // Handle tap (no drag movement) collapses the mobile panel.
-  const handleMobileBallPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current && dragRef.current.pointerId === e.pointerId && !dragRef.current.moved) {
-      setPanelCollapsed(true);
-    }
-    dragRef.current = null;
-    setIsDragging(false);
-  }, []);
-
   // Load original shop data when toggled
   useEffect(() => {
     if (selectedShop && showOriginalShop && (selectedShop._syncBadge === 'draft' || selectedShop._syncBadge === 'pending')) {
@@ -372,34 +363,6 @@ export default function HomePage() {
         />
       </div>
 
-      {/* Mobile pill drag handle: sits on the map/panel boundary. Drag to resize,
-          tap (no movement) to collapse the panel. Hidden on desktop and when collapsed. */}
-      {!isDesktop && !panelCollapsed && (
-        <div
-          className="md:hidden absolute z-40 touch-none"
-          style={{
-            top: mapMobileHeight ?? '40vh',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            transition: isDragging ? 'none' : 'top 200ms ease',
-          }}
-          onPointerDown={handleMobilePointerDown}
-          onPointerMove={handleMobilePointerMove}
-          onPointerUp={handleMobileBallPointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          {/* Not a <button>: the pointer-down guard ignores button targets so
-              a real button would never start the drag. */}
-          <div
-            role="button"
-            aria-label="拖动调整地图高度，点按折叠列表"
-            className="w-[4.5rem] h-6 rounded-full bg-surface border border-border shadow-[var(--shadow-elevated)] flex items-center justify-center text-muted active:bg-primary-muted/50 cursor-row-resize select-none"
-          >
-            <span className="w-8 h-[2px] rounded-full bg-current pointer-events-none" />
-          </div>
-        </div>
-      )}
-
       {/* Desktop resize handle with collapse toggle */}
       <div
         className="hidden md:flex relative w-1.5 bg-border/80 hover:bg-primary/60 active:bg-primary cursor-col-resize touch-none shrink-0"
@@ -440,13 +403,19 @@ export default function HomePage() {
         <div className={cn('h-full flex flex-col', isDesktop && 'border-l border-border')}>
           <div
             className={cn(
-              'flex-shrink-0 bg-surface border-b border-border px-4 py-3 flex items-center justify-between gap-2',
+              'flex-shrink-0 bg-surface border-b border-border flex flex-col',
               !isDesktop && 'cursor-row-resize touch-none',
             )}
             onPointerDown={handleMobilePointerDown}
             onPointerMove={handleMobilePointerMove}
             onPointerUp={handlePointerUp}
           >
+            {!isDesktop && (
+              <div className="md:hidden flex justify-center pt-2 pb-0.5" aria-hidden>
+                <span className="w-9 h-1 rounded-full bg-muted/35" />
+              </div>
+            )}
+            <div className="px-4 py-2.5 md:py-3 flex items-center justify-between gap-2">
             {/* Hide title on mobile when a shop is selected so the action cluster has room. */}
             <div className="flex items-center gap-1 min-w-0">
               {(isDesktop || !selectedShop) && (
@@ -526,6 +495,7 @@ export default function HomePage() {
                   </svg>
                 </button>
               )}
+            </div>
             </div>
           </div>
 
