@@ -184,6 +184,15 @@ export default function HomePage() {
     setIsDragging(false);
   }, []);
 
+  // Ball tap (no drag movement) collapses the mobile panel.
+  const handleMobileBallPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current && dragRef.current.pointerId === e.pointerId && !dragRef.current.moved) {
+      setPanelCollapsed(true);
+    }
+    dragRef.current = null;
+    setIsDragging(false);
+  }, []);
+
   // Load original shop data when toggled
   useEffect(() => {
     if (selectedShop && showOriginalShop && (selectedShop._syncBadge === 'draft' || selectedShop._syncBadge === 'pending')) {
@@ -363,6 +372,36 @@ export default function HomePage() {
         />
       </div>
 
+      {/* Mobile circular drag ball: sits on the map/panel boundary. Drag to resize,
+          tap (no movement) to collapse the panel. Hidden on desktop and when collapsed. */}
+      {!isDesktop && !panelCollapsed && (
+        <div
+          className="md:hidden absolute z-40 touch-none"
+          style={{
+            top: mapMobileHeight ?? '40vh',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            transition: isDragging ? 'none' : 'top 200ms ease',
+          }}
+          onPointerDown={handleMobilePointerDown}
+          onPointerMove={handleMobilePointerMove}
+          onPointerUp={handleMobileBallPointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          {/* Not a <button>: the pointer-down guard ignores button targets so
+              a real button would never start the drag. */}
+          <div
+            role="button"
+            aria-label="拖动调整地图高度，点按折叠列表"
+            className="w-10 h-10 rounded-full bg-surface border border-border shadow-[var(--shadow-elevated)] flex items-center justify-center text-muted active:bg-primary-muted/50 active:scale-95 transition-colors cursor-row-resize select-none"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4M8 15l4 4 4-4" />
+            </svg>
+          </div>
+        </div>
+      )}
+
       {/* Desktop resize handle with collapse toggle */}
       <div
         className="hidden md:flex relative w-1.5 bg-border/80 hover:bg-primary/60 active:bg-primary cursor-col-resize touch-none shrink-0"
@@ -401,19 +440,6 @@ export default function HomePage() {
         }
       >
         <div className={cn('h-full flex flex-col', isDesktop && 'border-l border-border')}>
-          {/* Mobile drag handle: compact grabber. The toolbar below still carries
-              a full-width blank-area drag zone for detail mode. */}
-          {!isDesktop && (
-            <div
-              className="flex-shrink-0 cursor-row-resize touch-none flex items-center justify-center py-1"
-              onPointerDown={handleMobilePointerDown}
-              onPointerMove={handleMobilePointerMove}
-              onPointerUp={handlePointerUp}
-              aria-hidden="true"
-            >
-              <div className="w-10 h-1 rounded-full bg-border" />
-            </div>
-          )}
           <div
             className={cn(
               'flex-shrink-0 bg-surface border-b border-border px-4 py-3 flex items-center justify-between gap-2',
