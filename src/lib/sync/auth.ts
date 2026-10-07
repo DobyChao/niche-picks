@@ -27,9 +27,14 @@ export function clearSyncIdentity() {
   localStorage.removeItem(SYNC_AUTHOR_KEY);
 }
 
+export function bearerAuthHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function validateSyncToken(token: string) {
   const res = await fetch(
-    `/api/sync/pull?token=${encodeURIComponent(token)}&since=9999-12-31T23:59:59.999Z`,
+    '/api/sync/pull?since=9999-12-31T23:59:59.999Z',
+    { headers: bearerAuthHeaders(token) },
   );
   const data = await res.json().catch(() => ({}));
 

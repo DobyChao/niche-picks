@@ -1,27 +1,50 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
 import { authenticateUser } from '@/lib/server/auth';
+import {
+  getClientIp,
+  isLimited,
+  json,
+  readBearerToken,
+  recordHit,
+  tooManyRequests,
+} from '@/lib/server/security';
 
-export async function GET(request: NextRequest) {
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_FAIL_LIMIT = 20;
+
+function normalizeSince(value: string | null): string {
+  if (!value || value.length > 40) return '1970-01-01T00:00:00.000Z';
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return '1970-01-01T00:00:00.000Z';
+  return new Date(time).toISOString();
+}
+
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
-    const since = searchParams.get('since') || '1970-01-01T00:00:00Z';
+    const ip = getClientIp(request);
+    const authKey = `authfail:${ip}`;
+    if (isLimited(authKey)) return tooManyRequests();
 
+    const token = readBearerToken(request);
     if (!token) {
-      return NextResponse.json({ ok: false, error: '缺少 token' }, { status: 401 });
+      recordHit(authKey, AUTH_FAIL_LIMIT, AUTH_WINDOW_MS);
+      return json({ ok: false, error: '缺少 token' }, 401);
     }
 
     const authResult = authenticateUser(token);
     if (!authResult.success) {
-      return NextResponse.json({ ok: false, error: '认证失败' }, { status: 401 });
+      recordHit(authKey, AUTH_FAIL_LIMIT, AUTH_WINDOW_MS);
+      return json({ ok: false, error: '认证失败' }, 401);
     }
 
+    const since = normalizeSince(new URL(request.url).searchParams.get('since'));
     const shops = db.prepare('SELECT * FROM shops WHERE updatedAt > ?').all(since);
     const reviews = db.prepare('SELECT * FROM reviews WHERE updatedAt > ?').all(since);
-    const pendingBatches = db.prepare('SELECT syncId, status, changesPayload FROM pending_syncs WHERE userToken = ?').all(token);
+    const pendingBatches = db.prepare(
+      'SELECT syncId, status FROM pending_syncs WHERE userToken = ?'
+    ).all(token);
 
-    return NextResponse.json({
+    return json({
       ok: true,
       shops,
       reviews,
@@ -29,7 +52,7 @@ export async function GET(request: NextRequest) {
       serverTime: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('[sync/pull] error:', error);
-    return NextResponse.json({ ok: false, error: '服务器错误' }, { status: 500 });
+    console.error('[sync/pull] error:', error instanceof Error ? error.message : 'unknown');
+    return json({ ok: false, error: '服务器错误' }, 500);
   }
 }

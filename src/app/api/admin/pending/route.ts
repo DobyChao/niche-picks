@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
-import { authenticateAdmin } from '@/lib/server/auth';
-import type { ChangeLogItem, PendingSync } from '@/lib/types';
+import { requireAdmin } from '@/lib/server/auth';
+import { json } from '@/lib/server/security';
+import type { ChangeLogItem } from '@/lib/types';
 
 function buildSummary(changes: ChangeLogItem[]): string {
   const counts: Record<string, Record<string, number>> = {};
@@ -31,27 +31,27 @@ function buildSummary(changes: ChangeLogItem[]): string {
   return parts.join(', ') || '无变更';
 }
 
-export async function GET(request: NextRequest) {
+const STATUSES = new Set(['pending', 'approved', 'rejected']);
+
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
+    const auth = requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
-    if (!token) {
-      return NextResponse.json({ ok: false, error: '缺少 token' }, { status: 401 });
+    const statusFilter = new URL(request.url).searchParams.get('status') || 'pending';
+    if (!STATUSES.has(statusFilter)) {
+      return json({ ok: false, error: 'status 参数无效，可选: pending, approved, rejected' }, 400);
     }
 
-    const authResult = authenticateAdmin(token);
-    if (!authResult.success) {
-      return NextResponse.json({ ok: false, error: '认证失败' }, { status: 401 });
-    }
-
-    const statusFilter = searchParams.get('status') || 'pending';
-
-    if (!['pending', 'approved', 'rejected'].includes(statusFilter)) {
-      return NextResponse.json({ ok: false, error: 'status 参数无效，可选: pending, approved, rejected' }, { status: 400 });
-    }
-
-    const rows = db.prepare('SELECT * FROM pending_syncs WHERE status = ?').all(statusFilter) as PendingSync[];
+    const rows = db.prepare(
+      'SELECT syncId, authorName, changesPayload, status, submittedAt FROM pending_syncs WHERE status = ?'
+    ).all(statusFilter) as {
+      syncId: string;
+      authorName: string;
+      changesPayload: string;
+      status: string;
+      submittedAt: string;
+    }[];
 
     const pending = rows.map((row) => {
       let changes: ChangeLogItem[] = [];
@@ -66,9 +66,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ ok: true, pending });
+    return json({ ok: true, pending });
   } catch (error) {
-    console.error('[admin/pending] error:', error);
-    return NextResponse.json({ ok: false, error: '服务器错误' }, { status: 500 });
+    console.error('[admin/pending] error:', error instanceof Error ? error.message : 'unknown');
+    return json({ ok: false, error: '服务器错误' }, 500);
   }
 }

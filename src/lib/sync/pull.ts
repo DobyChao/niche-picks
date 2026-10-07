@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { getSavedSyncIdentity } from '@/lib/sync/auth';
+import { bearerAuthHeaders, getSavedSyncIdentity } from '@/lib/sync/auth';
 
 export type AutoPullResult =
   | { status: 'skipped'; reason: 'no-identity' | 'throttled' }
@@ -8,7 +8,8 @@ export type AutoPullResult =
 
 export async function pullRemoteData(userToken: string) {
   const res = await fetch(
-    `/api/sync/pull?token=${encodeURIComponent(userToken)}&since=1970-01-01T00:00:00Z`,
+    '/api/sync/pull?since=1970-01-01T00:00:00Z',
+    { headers: bearerAuthHeaders(userToken) },
   );
 
   const data = await res.json().catch(() => ({}));

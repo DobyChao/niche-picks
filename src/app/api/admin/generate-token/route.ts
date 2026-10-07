@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
-import { authenticateAdmin } from '@/lib/server/auth';
+import { requireAdmin } from '@/lib/server/auth';
+import { cleanShortText } from '@/lib/server/change-validation';
+import { consumeRate, getClientIp, json, readJsonBody } from '@/lib/server/security';
 import type { UserTokenRole } from '@/lib/types';
 import crypto from 'crypto';
 
@@ -9,25 +10,17 @@ function normalizeRole(role: unknown): UserTokenRole | null {
   return null;
 }
 
-// GET — list all user tokens
-export async function GET(req: NextRequest) {
+function isUserToken(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const token = searchParams.get('token');
-
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: '管理员 token 不能为空' }, { status: 400 });
-    }
-
-    const auth = authenticateAdmin(token);
-    if (!auth.success) {
-      return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
-    }
+    const auth = requireAdmin(req);
+    if (!auth.ok) return auth.response;
 
     const rows = db
-      .prepare(
-        'SELECT token, nickname, remark, role, createdAt FROM user_tokens ORDER BY createdAt DESC'
-      )
+      .prepare('SELECT token, nickname, remark, role, createdAt FROM user_tokens ORDER BY createdAt DESC')
       .all() as { token: string; nickname: string; remark: string; role?: string; createdAt: string }[];
 
     const tokens = rows.map((row) => ({
@@ -35,112 +28,96 @@ export async function GET(req: NextRequest) {
       role: row.role === 'trusted' ? 'trusted' : 'normal',
     }));
 
-    return NextResponse.json({ tokens });
+    return json({ tokens });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '获取失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] GET error:', err instanceof Error ? err.message : 'unknown');
+    return json({ error: '获取失败' }, 500);
   }
 }
 
-// POST — generate a new user token
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { token, remark, role: roleInput } = body;
-
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: '管理员 token 不能为空' }, { status: 400 });
+    const auth = requireAdmin(req);
+    if (!auth.ok) return auth.response;
+    if (!consumeRate(`gen-token:${getClientIp(req)}`, 30, 60 * 60 * 1000)) {
+      return json({ error: '尝试过于频繁，请稍后再试' }, 429);
     }
 
-    const auth = authenticateAdmin(token);
-    if (!auth.success) {
-      return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
-    }
+    const body = await readJsonBody(req);
+    if (!body.ok) return body.response;
+    const record = body.value && typeof body.value === 'object' && !Array.isArray(body.value)
+      ? body.value as { remark?: unknown; role?: unknown }
+      : {};
 
-    const role = normalizeRole(roleInput) ?? 'normal';
+    const role = normalizeRole(record.role) ?? 'normal';
     const userToken = crypto.randomBytes(16).toString('hex');
     const now = new Date().toISOString();
 
     db.prepare(
       'INSERT INTO user_tokens (token, nickname, createdAt, remark, role) VALUES (?, ?, ?, ?, ?)'
-    ).run(userToken, '', now, (remark || '').trim(), role);
+    ).run(userToken, '', now, cleanShortText(record.remark, 80), role);
 
-    return NextResponse.json({ success: true, token: userToken, role });
+    return json({ success: true, token: userToken, role });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '生成失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] POST error:', err instanceof Error ? err.message : 'unknown');
+    return json({ error: '生成失败' }, 500);
   }
 }
 
-// PATCH — update token role
-export async function PATCH(req: NextRequest) {
+export async function PATCH(req: Request) {
   try {
-    const body = await req.json();
-    const { token, userToken, role: roleInput } = body;
+    const auth = requireAdmin(req);
+    if (!auth.ok) return auth.response;
 
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: '管理员 token 不能为空' }, { status: 400 });
-    }
-    if (!userToken || typeof userToken !== 'string') {
-      return NextResponse.json({ error: '要更新的 token 不能为空' }, { status: 400 });
-    }
+    const body = await readJsonBody(req);
+    if (!body.ok) return body.response;
+    const record = body.value && typeof body.value === 'object' && !Array.isArray(body.value)
+      ? body.value as { userToken?: unknown; role?: unknown }
+      : {};
 
-    const role = normalizeRole(roleInput);
+    if (!isUserToken(record.userToken)) {
+      return json({ error: '要更新的 token 不能为空' }, 400);
+    }
+    const role = normalizeRole(record.role);
     if (!role) {
-      return NextResponse.json({ error: '无效的身份角色，可选: normal, trusted' }, { status: 400 });
+      return json({ error: '无效的身份角色，可选: normal, trusted' }, 400);
     }
 
-    const auth = authenticateAdmin(token);
-    if (!auth.success) {
-      return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
-    }
-
-    const result = db.prepare('UPDATE user_tokens SET role = ? WHERE token = ?').run(role, userToken);
+    const result = db.prepare('UPDATE user_tokens SET role = ? WHERE token = ?').run(role, record.userToken);
     if (result.changes === 0) {
-      return NextResponse.json({ error: 'Token 不存在' }, { status: 404 });
+      return json({ error: 'Token 不存在' }, 404);
     }
 
-    return NextResponse.json({ success: true, role });
+    return json({ success: true, role });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '更新失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] PATCH error:', err instanceof Error ? err.message : 'unknown');
+    return json({ error: '更新失败' }, 500);
   }
 }
 
-// DELETE — remove a user token
-export async function DELETE(req: NextRequest) {
+export async function DELETE(req: Request) {
   try {
-    const body = await req.json();
-    const { token, userToken } = body;
+    const auth = requireAdmin(req);
+    if (!auth.ok) return auth.response;
 
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: '管理员 token 不能为空' }, { status: 400 });
-    }
-    if (!userToken || typeof userToken !== 'string') {
-      return NextResponse.json({ error: '要删除的 token 不能为空' }, { status: 400 });
-    }
+    const body = await readJsonBody(req);
+    if (!body.ok) return body.response;
+    const userToken = body.value && typeof body.value === 'object' && !Array.isArray(body.value)
+      ? (body.value as { userToken?: unknown }).userToken
+      : undefined;
 
-    const auth = authenticateAdmin(token);
-    if (!auth.success) {
-      return NextResponse.json({ error: '管理员认证失败' }, { status: 401 });
+    if (!isUserToken(userToken)) {
+      return json({ error: '要删除的 token 不能为空' }, 400);
     }
 
     const result = db.prepare('DELETE FROM user_tokens WHERE token = ?').run(userToken);
     if (result.changes === 0) {
-      return NextResponse.json({ error: 'Token 不存在' }, { status: 404 });
+      return json({ error: 'Token 不存在' }, 404);
     }
 
-    return NextResponse.json({ success: true });
+    return json({ success: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '删除失败' },
-      { status: 500 }
-    );
+    console.error('[admin/generate-token] DELETE error:', err instanceof Error ? err.message : 'unknown');
+    return json({ error: '删除失败' }, 500);
   }
 }

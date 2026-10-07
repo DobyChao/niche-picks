@@ -1,39 +1,52 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/server/db';
-import { authenticateAdmin } from '@/lib/server/auth';
+import { requireAdmin } from '@/lib/server/auth';
 import { applyChangesToDb } from '@/lib/server/merge-changes';
-import type { ChangeLogItem } from '@/lib/types';
+import { validateChanges } from '@/lib/server/change-validation';
+import { json, readJsonBody } from '@/lib/server/security';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { token, syncId } = body;
+    const auth = requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
-    if (!token || !syncId) {
-      return NextResponse.json({ ok: false, error: 'missing_params' }, { status: 400 });
+    const body = await readJsonBody(request);
+    if (!body.ok) return body.response;
+    const syncId = body.value && typeof body.value === 'object' && !Array.isArray(body.value)
+      ? (body.value as { syncId?: unknown }).syncId
+      : undefined;
+    if (typeof syncId !== 'string' || syncId.length === 0 || syncId.length > 80) {
+      return json({ ok: false, error: 'missing_params' }, 400);
     }
 
-    const auth = authenticateAdmin(token);
-    if (!auth.success) {
-      return NextResponse.json({ ok: false, error: auth.error }, { status: 401 });
+    const batch = db.prepare('SELECT changesPayload, status FROM pending_syncs WHERE syncId = ?').get(syncId) as
+      | { changesPayload: string; status: string }
+      | undefined;
+    if (!batch) return json({ ok: false, error: 'batch_not_found' }, 404);
+    if (batch.status !== 'pending') return json({ ok: false, error: 'batch_not_pending' }, 400);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(batch.changesPayload);
+    } catch {
+      return json({ ok: false, error: '变更数据不合法' }, 400);
     }
+    const validated = validateChanges(parsed);
+    if (!validated.ok) return json({ ok: false, error: validated.error }, 400);
 
-    const batch = db.prepare('SELECT * FROM pending_syncs WHERE syncId = ?').get(syncId) as any;
-    if (!batch) {
-      return NextResponse.json({ ok: false, error: 'batch_not_found' }, { status: 404 });
-    }
-    if (batch.status !== 'pending') {
-      return NextResponse.json({ ok: false, error: 'batch_not_pending' }, { status: 400 });
-    }
+    const updateStatus = db.prepare('UPDATE pending_syncs SET status = ? WHERE syncId = ? AND status = ?');
+    db.transaction(() => {
+      applyChangesToDb(validated.changes);
+      const result = updateStatus.run('approved', syncId, 'pending');
+      if (result.changes !== 1) throw new Error('batch_not_pending');
+    })();
 
-    const changes: ChangeLogItem[] = JSON.parse(batch.changesPayload);
-    const merged = applyChangesToDb(changes);
-
-    db.prepare('UPDATE pending_syncs SET status = ? WHERE syncId = ?').run('approved', syncId);
-
-    return NextResponse.json({ ok: true, merged });
+    return json({ ok: true, merged: validated.changes.length });
   } catch (error) {
-    console.error('Approve error:', error);
-    return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    if (code.startsWith('SQLITE_CONSTRAINT')) {
+      return json({ ok: false, error: '变更无法写入，请确认关联店铺是否存在' }, 400);
+    }
+    console.error('[admin/approve] error:', error instanceof Error ? error.message : 'unknown');
+    return json({ ok: false, error: 'internal_error' }, 500);
   }
 }

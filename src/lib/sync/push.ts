@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { validateSyncToken } from '@/lib/sync/auth';
+import { bearerAuthHeaders, validateSyncToken } from '@/lib/sync/auth';
 import { pullRemoteData } from '@/lib/sync/pull';
 import type { ChangeLogItem } from '@/lib/types';
 
@@ -41,8 +41,8 @@ export async function pushLocalChanges(userToken: string, authorName: string) {
 
   const res = await fetch('/api/sync/push', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: userToken, authorName, changes }),
+    headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(userToken) },
+    body: JSON.stringify({ authorName, changes }),
   });
 
   if (!res.ok) {

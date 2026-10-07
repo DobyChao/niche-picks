@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Toast from '@/components/ui/Toast';
 import EmptyState from '@/components/ui/EmptyState';
+import { bearerAuthHeaders } from '@/lib/sync/auth';
 
 interface PendingItem {
   syncId: string;
@@ -74,7 +75,7 @@ export default function AdminPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/admin/pending?token=${encodeURIComponent(token)}`);
+      const res = await fetch('/api/admin/pending', { headers: bearerAuthHeaders(token) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || data.message || '获取待审批列表失败');
@@ -93,7 +94,7 @@ export default function AdminPage() {
     if (!token) return;
     setLoadingTokens(true);
     try {
-      const res = await fetch(`/api/admin/generate-token?token=${encodeURIComponent(token)}`);
+      const res = await fetch('/api/admin/generate-token', { headers: bearerAuthHeaders(token) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '获取 Token 列表失败');
@@ -112,7 +113,7 @@ export default function AdminPage() {
     if (!token) return;
     setLoadingFeedbacks(true);
     try {
-      const res = await fetch(`/api/feedback?token=${encodeURIComponent(token)}`);
+      const res = await fetch('/api/feedback', { headers: bearerAuthHeaders(token) });
       if (!res.ok) return;
       const data = await res.json();
       setFeedbackList(data.feedbacks || []);
@@ -149,8 +150,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/generate-token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, remark: remark.trim(), role: newTokenRole }),
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(token) },
+        body: JSON.stringify({ remark: remark.trim(), role: newTokenRole }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '生成失败');
@@ -171,8 +172,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/generate-token', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, userToken, role }),
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(token) },
+        body: JSON.stringify({ userToken, role }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '更新失败');
@@ -192,8 +193,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/generate-token', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, userToken }),
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(token) },
+        body: JSON.stringify({ userToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '删除失败');
@@ -422,8 +423,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/approve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncId, token }),
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(token) },
+        body: JSON.stringify({ syncId }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -440,8 +441,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/reject', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncId, token }),
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(token) },
+        body: JSON.stringify({ syncId }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -460,8 +461,8 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/feedback', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, id }),
+        headers: { 'Content-Type': 'application/json', ...bearerAuthHeaders(token) },
+        body: JSON.stringify({ id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '删除失败');

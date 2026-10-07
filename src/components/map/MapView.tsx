@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { MergedShop } from '@/lib/types';
-import { getCategoryColor } from '@/lib/utils';
+import { escapeHtml, getCategoryColor } from '@/lib/utils';
+import { buildShopInfoHtml } from '@/lib/shop-info-html';
 import MapActionMenu from './MapActionMenu';
 import MapSearchBox, { type PoiResult } from './MapSearchBox';
 import { guardAmapCallback, AMAP_CALLBACK_TIMEOUT_MS } from '@/lib/amap-guard';
@@ -37,71 +38,6 @@ function getSearchRadius(zoom: number): number {
 
 const AMAP_SCRIPT_WAIT_MS = 20_000;
 const LOCATE_OVERALL_TIMEOUT_MS = 15_000;
-
-function buildShopInfoHtml(shop: MergedShop): string {
-  const parts: string[] = [];
-
-  // Name + category
-  const catColor = getCategoryColor(shop.category);
-  const categoryHtml = shop.category
-    ? `<span style="display:inline-block;padding:1px 8px;font-size:11px;border-radius:9999px;background:${catColor};color:white;margin-left:6px;vertical-align:middle">${shop.category}</span>`
-    : '';
-  parts.push(`<div style="font-size:14px;font-weight:600;color:#111827;line-height:1.4">${shop.name}${categoryHtml}</div>`);
-
-  // Rating
-  if (shop.reviewCount > 0) {
-    const r = shop.avgRating ?? 0;
-    let starsHtml = '';
-    for (let i = 1; i <= 5; i++) {
-      if (r >= i) {
-        starsHtml += '<span style="color:#f59e0b">★</span>';
-      } else if (r > i - 1) {
-        const pct = Math.round((i - r) * 100);
-        starsHtml += `<span style="position:relative;display:inline-block"><span style="color:#d1d5db">★</span><span style="position:absolute;top:0;left:0;color:#f59e0b;clip-path:inset(0 ${pct}% 0 0)">★</span></span>`;
-      } else {
-        starsHtml += '<span style="color:#d1d5db">★</span>';
-      }
-    }
-    const ratingText = `${r.toFixed(1)} · ${shop.reviewCount}条点评`;
-    const priceText = shop.avgPrice != null ? ` · 人均¥${Math.round(shop.avgPrice)}` : '';
-    parts.push(`<div style="margin-top:6px;display:flex;align-items:center;gap:6px"><span style="font-size:13px;letter-spacing:1px">${starsHtml}</span><span style="font-size:11px;color:#9ca3af">${ratingText}${priceText}</span></div>`);
-  }
-
-  // Address
-  if (shop.address) {
-    parts.push(`<div style="font-size:12px;color:#9ca3af;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${shop.address}</div>`);
-  }
-
-  // Phone
-  if (shop.phone) {
-    parts.push(`<div style="font-size:12px;color:#6b7280;margin-top:4px">${shop.phone}</div>`);
-  }
-
-  // Hours
-  if (shop.businessHours) {
-    parts.push(`<div style="font-size:12px;color:#6b7280;margin-top:2px">${shop.businessHours}</div>`);
-  }
-
-  // Tags
-  if (shop.tags && shop.tags.length > 0) {
-    const tagsHtml = shop.tags.map(t =>
-      `<span style="display:inline-block;padding:1px 6px;font-size:11px;border-radius:3px;background:#f3f4f6;color:#6b7280;margin-right:3px;margin-bottom:2px">${t}</span>`
-    ).join('');
-    parts.push(`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:2px">${tagsHtml}</div>`);
-  }
-
-  // Action buttons
-  parts.push(`
-    <div style="margin-top:10px;border-top:1px solid #f3f4f6;padding-top:8px;display:flex;gap:8px">
-      <button onclick="window.__mapShopDetail('${shop.id}')"
-        style="flex:1;padding:5px 0;font-size:12px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer">查看详情</button>
-      <button onclick="window.__mapShopEdit('${shop.id}')"
-        style="flex:1;padding:5px 0;font-size:12px;background:#f3f4f6;color:#374151;border:none;border-radius:6px;cursor:pointer">编辑</button>
-    </div>
-  `);
-
-  return `<div style="min-width:200px;max-width:280px;padding:2px">${parts.join('')}</div>`;
-}
 
 interface MapActionData {
   x: number;
@@ -434,7 +370,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
           title: poi.name,
           zIndex: 120,
           label: {
-            content: poi.name,
+            content: escapeHtml(poi.name || ''),
             direction: 'top',
           },
         });
@@ -979,7 +915,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
             <circle cx="12" cy="12" r="5" fill="#fff"/>
           </svg>`,
           label: {
-            content: shop.name,
+            content: escapeHtml(shop.name || ''),
             direction: 'top',
             offset: new AMap.Pixel(0, -6),
           },
@@ -1026,7 +962,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
       const pos: [number, number] = [sortAnchor.lng, sortAnchor.lat];
       if (anchorMarkerRef.current) {
         anchorMarkerRef.current.setPosition(pos);
-        anchorMarkerRef.current.setLabel({ content: `锚点 · ${sortAnchor.label}`, direction: 'top' });
+        anchorMarkerRef.current.setLabel({ content: `锚点 · ${escapeHtml(sortAnchor.label || '')}`, direction: 'top' });
       } else {
         anchorMarkerRef.current = new AMap.Marker({
           position: pos,
@@ -1036,7 +972,7 @@ export default function MapView({ shops, onMapActionAddShop, flyToShop, selected
             <div style="position:absolute;inset:0;background:rgba(196,101,58,0.25);border-radius:50%"></div>
             <div style="position:absolute;inset:5px;background:#c4653a;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700">★</div>
           </div>`,
-          label: { content: `锚点 · ${sortAnchor.label}`, direction: 'top' },
+          label: { content: `锚点 · ${escapeHtml(sortAnchor.label || '')}`, direction: 'top' },
         });
         anchorMarkerRef.current.setMap(mapInstanceRef.current);
       }
