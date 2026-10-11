@@ -383,7 +383,12 @@ export default function HomePage() {
 
       {/* Sidebar */}
       <div
-        className="relative overflow-hidden bg-surface shadow-[var(--shadow-card)]"
+        className={cn(
+          'relative',
+          isDesktop
+            ? 'overflow-hidden bg-surface shadow-[var(--shadow-card)]'
+            : !panelCollapsed && 'sheet-panel z-10',
+        )}
         style={isDesktop
           ? {
               width: panelCollapsed ? 0 : sidebarWidth,
@@ -395,12 +400,36 @@ export default function HomePage() {
               flex: panelCollapsed ? 'none' : '1 1 0%',
               height: panelCollapsed ? 0 : undefined,
               minHeight: 0,
-              overflow: 'hidden',
+              overflow: panelCollapsed ? 'hidden' : 'visible',
               transition: isDragging ? 'none' : 'height 200ms ease',
             }
         }
       >
-        <div className={cn('h-full flex flex-col', isDesktop && 'border-l border-border')}>
+        {!isDesktop && !panelCollapsed && (
+          <div
+            className="sheet-tongue md:hidden"
+            role="button"
+            aria-label="拖动调整地图高度"
+            onPointerDown={handleMobilePointerDown}
+            onPointerMove={handleMobilePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          >
+            {/* Tongue shares the panel fill. Shoulders are cubic beziers that
+                leave and meet the panel edge on a horizontal tangent. */}
+            <svg viewBox="0 0 88 18" aria-hidden>
+              <path
+                fill="var(--color-surface)"
+                d="M0 16C20 16 10 3 30 3H58C78 3 68 16 88 16V18H0Z"
+              />
+            </svg>
+            <span
+              className="relative z-[1] pointer-events-none"
+              style={{ width: 16, height: 2, borderRadius: 999, background: 'rgba(0, 0, 0, 0.2)' }}
+            />
+          </div>
+        )}
+        <div className={cn('h-full flex flex-col min-h-0 bg-surface', isDesktop ? 'border-l border-border' : 'overflow-hidden')}>
           <div
             className={cn(
               'flex-shrink-0 bg-surface border-b border-border flex flex-col',
@@ -410,11 +439,6 @@ export default function HomePage() {
             onPointerMove={handleMobilePointerMove}
             onPointerUp={handlePointerUp}
           >
-            {!isDesktop && (
-              <div className="md:hidden flex justify-center pt-2 pb-0.5" aria-hidden>
-                <span className="w-9 h-1 rounded-full bg-muted/35" />
-              </div>
-            )}
             <div className="px-4 py-2.5 md:py-3 flex items-center justify-between gap-2">
             {/* Hide title on mobile when a shop is selected so the action cluster has room. */}
             <div className="flex items-center gap-1 min-w-0">

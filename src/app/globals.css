@@ -54,6 +54,37 @@ input[type='range'] {
   display: none !important;
 }
 
+/* Mobile list sheet: one silhouette, tongue included, no separate handle shadow. */
+.sheet-panel {
+  filter:
+    drop-shadow(0 1px 1px rgba(44, 36, 22, 0.05))
+    drop-shadow(0 6px 16px rgba(44, 36, 22, 0.06));
+}
+
+.sheet-tongue {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 2;
+  width: 88px;
+  height: 18px;
+  transform: translate(-50%, calc(-100% + 2px));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 5px;
+  touch-action: none;
+  cursor: row-resize;
+}
+
+.sheet-tongue svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
 /* Hide scrollbar for horizontal chip rows while keeping scroll */
 .scrollbar-none {
   -ms-overflow-style: none;
