@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:security": "node --experimental-strip-types --experimental-loader ./src/lib/ts-resolve-hook.mjs --test src/lib/shop-info-html.test.ts src/lib/server/change-validation.test.ts"
+    "test:security": "node --experimental-strip-types --experimental-loader ./src/lib/ts-resolve-hook.mjs --test src/lib/shop-info-html.test.ts src/lib/server/change-validation.test.ts src/lib/server/db-path.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

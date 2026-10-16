@@ -1,12 +1,22 @@
 import Database from 'better-sqlite3';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
 import type { PendingSync } from '@/lib/types';
+import { isProductionServer, resolveDbPath } from './db-path';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'xiaozhong.db');
+const DB_PATH = resolveDbPath();
 
-// Ensure the data directory exists
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+// Production must open the existing live file. Creating a blank database
+// here would hide a bad path and look like the shop data had been wiped.
+if (isProductionServer()) {
+  if (!fs.existsSync(DB_PATH)) {
+    throw new Error(`[db] production database does not exist: ${DB_PATH}`);
+  }
+} else {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+}
+
+console.log(`[db] opening ${DB_PATH}`);
 
 // Create singleton database connection
 const db = new Database(DB_PATH);

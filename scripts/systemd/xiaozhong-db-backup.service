@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup Xiaozhong Review SQLite database
+After=network.target
+
+[Service]
+Type=oneshot
+User=agentuser
+Group=agentuser
+Environment=HOME=/home/agentuser
+ExecStart=/home/agentuser/projects/xiaozhong-review/scripts/backup-live-db.sh
